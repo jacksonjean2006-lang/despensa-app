@@ -1,0 +1,312 @@
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
+import '../models/categoria.dart';
+import '../models/produto.dart';
+import '../models/local_compra.dart';
+import '../models/lista_item.dart';
+import '../models/historico_compra.dart';
+
+class DatabaseHelper {
+  static final DatabaseHelper instance = DatabaseHelper._internal();
+  static Database? _db;
+
+  DatabaseHelper._internal();
+
+  Future<Database> get db async {
+    _db ??= await _initDB();
+    return _db!;
+  }
+
+  Future<Database> _initDB() async {
+    final path = join(await getDatabasesPath(), 'despensa.db');
+    return openDatabase(path, version: 1, onCreate: _onCreate);
+  }
+
+  Future<void> _onCreate(Database db, int version) async {
+    await db.execute('''
+      CREATE TABLE categorias (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        icone TEXT
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE produtos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        foto_path TEXT,
+        unidade TEXT NOT NULL DEFAULT 'un',
+        consumo_mensal REAL NOT NULL DEFAULT 0,
+        estoque_minimo REAL NOT NULL DEFAULT 0,
+        categoria_id INTEGER REFERENCES categorias(id),
+        marca TEXT,
+        ativo INTEGER NOT NULL DEFAULT 1,
+        criado_em TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE estoque (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        produto_id INTEGER NOT NULL REFERENCES produtos(id),
+        quantidade REAL NOT NULL DEFAULT 0,
+        atualizado_em TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE listas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        descricao TEXT NOT NULL,
+        criado_em TEXT NOT NULL,
+        finalizado_em TEXT
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE lista_itens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lista_id INTEGER NOT NULL REFERENCES listas(id),
+        produto_id INTEGER REFERENCES produtos(id),
+        nome_avulso TEXT,
+        quantidade REAL NOT NULL DEFAULT 1,
+        unidade TEXT,
+        marcado INTEGER NOT NULL DEFAULT 0,
+        substituto INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE locais_compra (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        referencia TEXT,
+        ativo INTEGER NOT NULL DEFAULT 1,
+        criado_em TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE historico_compras (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lista_id INTEGER REFERENCES listas(id),
+        produto_id INTEGER REFERENCES produtos(id),
+        local_id INTEGER REFERENCES locais_compra(id),
+        quantidade_comprada REAL NOT NULL,
+        preco_total REAL,
+        preco_unitario REAL,
+        data TEXT NOT NULL
+      )
+    ''');
+    await _seed(db);
+  }
+
+  Future<void> _seed(Database db) async {
+    final cats = [
+      {'nome': 'Alimentação', 'icone': '🍎'},
+      {'nome': 'Limpeza', 'icone': '🧹'},
+      {'nome': 'Higiene', 'icone': '🪥'},
+      {'nome': 'Bebidas', 'icone': '🥤'},
+      {'nome': 'Frios e Laticínios', 'icone': '🧀'},
+      {'nome': 'Padaria', 'icone': '🍞'},
+      {'nome': 'Outros', 'icone': '📦'},
+    ];
+    for (final c in cats) {
+      await db.insert('categorias', c);
+    }
+  }
+
+  // ─── CATEGORIAS ────────────────────────────────────────────
+  Future<List<Categoria>> getCategorias() async {
+    final d = await db;
+    final rows = await d.query('categorias', orderBy: 'nome');
+    return rows.map(Categoria.fromMap).toList();
+  }
+
+  // ─── PRODUTOS ──────────────────────────────────────────────
+  Future<List<Produto>> getProdutos({bool apenasAtivos = false}) async {
+    final d = await db;
+    final rows = await d.rawQuery('''
+      SELECT p.*, 
+             COALESCE(e.quantidade, 0) AS estoque_atual,
+             c.nome AS categoria_nome,
+             c.icone AS categoria_icone
+      FROM produtos p
+      LEFT JOIN estoque e ON e.produto_id = p.id
+      LEFT JOIN categorias c ON c.id = p.categoria_id
+      ${apenasAtivos ? 'WHERE p.ativo = 1' : ''}
+      ORDER BY p.nome
+    ''');
+    return rows.map(Produto.fromMap).toList();
+  }
+
+  Future<int> salvarProduto(Produto p) async {
+    final d = await db;
+    if (p.id == null) {
+      return d.insert('produtos', p.toMap());
+    } else {
+      await d.update('produtos', p.toMap(),
+          where: 'id = ?', whereArgs: [p.id]);
+      return p.id!;
+    }
+  }
+
+  Future<void> deletarProduto(int id) async {
+    final d = await db;
+    await d.delete('produtos', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ─── ESTOQUE ───────────────────────────────────────────────
+  Future<void> atualizarEstoque(int produtoId, double quantidade) async {
+    final d = await db;
+    final existe = await d.query('estoque',
+        where: 'produto_id = ?', whereArgs: [produtoId]);
+    final agora = DateTime.now().toIso8601String();
+    if (existe.isEmpty) {
+      await d.insert('estoque', {
+        'produto_id': produtoId,
+        'quantidade': quantidade,
+        'atualizado_em': agora,
+      });
+    } else {
+      await d.update(
+        'estoque',
+        {'quantidade': quantidade, 'atualizado_em': agora},
+        where: 'produto_id = ?',
+        whereArgs: [produtoId],
+      );
+    }
+  }
+
+  // ─── LISTAS ────────────────────────────────────────────────
+  Future<int> criarLista(String descricao) async {
+    final d = await db;
+    return d.insert('listas', {
+      'descricao': descricao,
+      'criado_em': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<void> finalizarLista(int listaId) async {
+    final d = await db;
+    await d.update(
+      'listas',
+      {'finalizado_em': DateTime.now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [listaId],
+    );
+  }
+
+  Future<Map<String, dynamic>?> getListaAberta() async {
+    final d = await db;
+    final rows = await d.query('listas',
+        where: 'finalizado_em IS NULL',
+        orderBy: 'criado_em DESC',
+        limit: 1);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  // ─── ITENS DA LISTA ────────────────────────────────────────
+  Future<List<ListaItem>> getItensDaLista(int listaId) async {
+    final d = await db;
+    final rows = await d.rawQuery('''
+      SELECT li.*,
+             p.nome AS produto_nome,
+             p.foto_path,
+             c.icone AS categoria_icone
+      FROM lista_itens li
+      LEFT JOIN produtos p ON p.id = li.produto_id
+      LEFT JOIN categorias c ON c.id = p.categoria_id
+      WHERE li.lista_id = ?
+      ORDER BY p.nome, li.nome_avulso
+    ''', [listaId]);
+    return rows.map(ListaItem.fromMap).toList();
+  }
+
+  Future<int> adicionarItem(ListaItem item) async {
+    final d = await db;
+    return d.insert('lista_itens', item.toMap());
+  }
+
+  Future<void> toggleMarcado(int itemId, bool marcado) async {
+    final d = await db;
+    await d.update('lista_itens', {'marcado': marcado ? 1 : 0},
+        where: 'id = ?', whereArgs: [itemId]);
+  }
+
+  Future<void> deletarItem(int itemId) async {
+    final d = await db;
+    await d.delete('lista_itens', where: 'id = ?', whereArgs: [itemId]);
+  }
+
+  Future<void> gerarListaAutomatica(int listaId) async {
+    final d = await db;
+    final rows = await d.rawQuery('''
+      SELECT p.id, p.nome, p.unidade, p.consumo_mensal,
+             COALESCE(e.quantidade, 0) AS estoque_atual
+      FROM produtos p
+      LEFT JOIN estoque e ON e.produto_id = p.id
+      WHERE p.ativo = 1
+        AND (p.consumo_mensal - COALESCE(e.quantidade, 0)) > 0
+    ''');
+    for (final row in rows) {
+      final qtd = (row['consumo_mensal'] as double) -
+          (row['estoque_atual'] as double);
+      await d.insert('lista_itens', {
+        'lista_id': listaId,
+        'produto_id': row['id'],
+        'quantidade': qtd,
+        'unidade': row['unidade'],
+        'marcado': 0,
+        'substituto': 0,
+      });
+    }
+  }
+
+  // ─── LOCAIS ────────────────────────────────────────────────
+  Future<List<LocalCompra>> getLocais() async {
+    final d = await db;
+    final rows = await d.query('locais_compra',
+        where: 'ativo = 1', orderBy: 'nome');
+    return rows.map(LocalCompra.fromMap).toList();
+  }
+
+  Future<int> salvarLocal(LocalCompra local) async {
+    final d = await db;
+    if (local.id == null) {
+      return d.insert('locais_compra', local.toMap());
+    } else {
+      await d.update('locais_compra', local.toMap(),
+          where: 'id = ?', whereArgs: [local.id]);
+      return local.id!;
+    }
+  }
+
+  // ─── HISTÓRICO ─────────────────────────────────────────────
+  Future<void> registrarCompra(HistoricoCompra h) async {
+    final d = await db;
+    await d.insert('historico_compras', h.toMap());
+    // Atualiza estoque somando o que foi comprado
+    if (h.produtoId != null) {
+      final rows = await d.query('estoque',
+          where: 'produto_id = ?', whereArgs: [h.produtoId]);
+      final atual = rows.isEmpty
+          ? 0.0
+          : (rows.first['quantidade'] as num).toDouble();
+      await atualizarEstoque(h.produtoId!, atual + h.quantidadeComprada);
+    }
+  }
+
+  Future<List<HistoricoCompra>> getHistoricoProduto(int produtoId) async {
+    final d = await db;
+    final rows = await d.rawQuery('''
+      SELECT h.*, l.nome AS local_nome, p.unidade
+      FROM historico_compras h
+      LEFT JOIN locais_compra l ON l.id = h.local_id
+      LEFT JOIN produtos p ON p.id = h.produto_id
+      WHERE h.produto_id = ?
+      ORDER BY h.data DESC
+    ''', [produtoId]);
+    return rows.map(HistoricoCompra.fromMap).toList();
+  }
+
+  Future<HistoricoCompra?> getUltimaCompra(int produtoId) async {
+    final lista = await getHistoricoProduto(produtoId);
+    return lista.isEmpty ? null : lista.first;
+  }
+}
