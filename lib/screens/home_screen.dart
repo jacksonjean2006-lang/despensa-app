@@ -3,6 +3,7 @@ import '../database/database_helper.dart';
 import '../models/produto.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'compra_avulsa_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -49,6 +50,20 @@ class _HomeScreenState extends State<HomeScreen> {
           Text(saudacao, style: const TextStyle(fontSize: 12, color: Colors.white70)),
           const Text('Minha Despensa', style: TextStyle(fontSize: 18)),
         ]),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.shopping_bag_outlined),
+            tooltip: 'Compra avulsa',
+            onPressed: () async {
+              final alterou = await Navigator.push<bool>(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const CompraAvulsaScreen()),
+              );
+              if (alterou == true) _carregar();
+            },
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _carregar,
