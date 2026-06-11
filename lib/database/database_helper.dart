@@ -122,12 +122,16 @@ class DatabaseHelper {
   Future<List<Produto>> getProdutos({bool apenasAtivos = false}) async {
     final d = await db;
     final rows = await d.rawQuery('''
-      SELECT p.*, 
-             COALESCE(e.quantidade, 0) AS estoque_atual,
+      SELECT p.*,
+             COALESCE((
+               SELECT quantidade FROM estoque
+               WHERE produto_id = p.id
+               ORDER BY atualizado_em DESC
+               LIMIT 1
+             ), 0) AS estoque_atual,
              c.nome AS categoria_nome,
              c.icone AS categoria_icone
       FROM produtos p
-      LEFT JOIN estoque e ON e.produto_id = p.id
       LEFT JOIN categorias c ON c.id = p.categoria_id
       ${apenasAtivos ? 'WHERE p.ativo = 1' : ''}
       ORDER BY p.nome
@@ -238,15 +242,24 @@ class DatabaseHelper {
     final d = await db;
     final rows = await d.rawQuery('''
       SELECT p.id, p.nome, p.unidade, p.consumo_mensal,
-             COALESCE(e.quantidade, 0) AS estoque_atual
+             COALESCE((
+               SELECT quantidade FROM estoque
+               WHERE produto_id = p.id
+               ORDER BY atualizado_em DESC
+               LIMIT 1
+             ), 0) AS estoque_atual
       FROM produtos p
-      LEFT JOIN estoque e ON e.produto_id = p.id
       WHERE p.ativo = 1
-        AND (p.consumo_mensal - COALESCE(e.quantidade, 0)) > 0
+        AND (p.consumo_mensal - COALESCE((
+               SELECT quantidade FROM estoque
+               WHERE produto_id = p.id
+               ORDER BY atualizado_em DESC
+               LIMIT 1
+             ), 0)) > 0
     ''');
     for (final row in rows) {
-      final qtd = (row['consumo_mensal'] as double) -
-          (row['estoque_atual'] as double);
+      final qtd = (row['consumo_mensal'] as num).toDouble() -
+          (row['estoque_atual'] as num).toDouble();
       await d.insert('lista_itens', {
         'lista_id': listaId,
         'produto_id': row['id'],

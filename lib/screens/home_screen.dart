@@ -70,6 +70,33 @@ class _HomeScreenState extends State<HomeScreen> {
         child: ListView(
           padding: const EdgeInsets.all(12),
           children: [
+            // Botão compra avulsa
+            Card(
+              color: AppTheme.primary.withOpacity(0.06),
+              child: ListTile(
+                leading: const Icon(Icons.shopping_bag_outlined,
+                    color: AppTheme.primary),
+                title: const Text('Compra avulsa',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.primary)),
+                subtitle: const Text(
+                    'Registre uma compra sem gerar lista',
+                    style: TextStyle(fontSize: 12)),
+                trailing: const Icon(Icons.arrow_forward_ios,
+                    size: 14, color: AppTheme.primary),
+                onTap: () async {
+                  final alterou = await Navigator.push<bool>(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const CompraAvulsaScreen()),
+                  );
+                  if (alterou == true) _carregar();
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
+
             // Estatísticas
             Row(children: [
               _StatCard(
