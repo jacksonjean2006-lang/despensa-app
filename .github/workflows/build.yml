@@ -1,0 +1,50 @@
+name: Build Flutter APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.0'
+          channel: 'stable'
+
+      - name: Instalar dependências
+        working-directory: app
+        run: flutter pub get
+
+      - name: Build APK release
+        working-directory: app
+        run: flutter build apk --release
+
+      - name: Upload APK como artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: despensa-app-release
+          path: app/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
+
+      - name: Copiar APK para raiz e fazer commit
+        run: |
+          cp app/build/app/outputs/flutter-apk/app-release.apk app-release.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add app-release.apk
+          git diff --staged --quiet || git commit -m "ci: atualiza APK [skip ci]"
+          git push
