@@ -28,6 +28,24 @@ jobs:
       - name: Instalar dependências
         run: flutter pub get
 
+      - name: Criar projeto Android se não existir
+        run: |
+          if [ ! -d "android" ]; then
+            echo "Pasta android não encontrada. Criando..."
+            # Salva arquivos existentes
+            cp -r lib lib_backup
+            cp pubspec.yaml pubspec_backup.yaml
+            # Cria projeto novo
+            flutter create --platforms=android --org com.infosolutions .
+            # Restaura arquivos originais
+            rm -rf lib
+            mv lib_backup lib
+            cp pubspec_backup.yaml pubspec.yaml
+            flutter pub get
+          else
+            echo "Pasta android já existe."
+          fi
+
       - name: Build APK release
         run: flutter build apk --release
 
@@ -43,6 +61,6 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk app-release.apk
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add app-release.apk
-          git diff --staged --quiet || git commit -m "ci: atualiza APK [skip ci]"
+          git add app-release.apk android
+          git diff --staged --quiet || git commit -m "ci: atualiza APK e pasta android [skip ci]"
           git push
