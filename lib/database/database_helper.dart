@@ -309,4 +309,88 @@ class DatabaseHelper {
     final lista = await getHistoricoProduto(produtoId);
     return lista.isEmpty ? null : lista.first;
   }
+
+  // ─── RESUMO MENSAL ─────────────────────────────────────────
+  Future<List<Map<String, dynamic>>> getResumoMensal() async {
+    final d = await db;
+    final rows = await d.rawQuery('''
+      SELECT
+        strftime('%Y-%m', data) AS mes,
+        COUNT(DISTINCT CASE WHEN lista_id IS NOT NULL THEN lista_id ELSE id END) AS num_compras,
+        SUM(preco_total) AS total_gasto,
+        COUNT(DISTINCT produto_id) AS num_produtos
+      FROM historico_compras
+      WHERE preco_total IS NOT NULL
+      GROUP BY mes
+      ORDER BY mes DESC
+      LIMIT 12
+    ''');
+    return rows.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
+  // ─── TODOS OS ÚLTIMOS PREÇOS ────────────────────────────────
+  Future<List<Map<String, dynamic>>> getUltimosPrecos() async {
+    final d = await db;
+    // Última compra de cada produto
+    final rows = await d.rawQuery('''
+      SELECT
+        h.produto_id,
+        p.nome AS produto_nome,
+        p.unidade,
+        c.icone AS categoria_icone,
+        h.preco_unitario,
+        h.preco_total,
+        h.quantidade_comprada,
+        h.data,
+        l.nome AS local_nome
+      FROM historico_compras h
+      JOIN produtos p ON p.id = h.produto_id
+      LEFT JOIN categorias c ON c.id = p.categoria_id
+      LEFT JOIN locais_compra l ON l.id = h.local_id
+      WHERE h.preco_unitario IS NOT NULL
+        AND h.data = (
+          SELECT MAX(h2.data) FROM historico_compras h2
+          WHERE h2.produto_id = h.produto_id
+            AND h2.preco_unitario IS NOT NULL
+        )
+      GROUP BY h.produto_id
+      ORDER BY p.nome
+    ''');
+
+    // Para cada produto, busca o preço anterior separadamente
+    final result = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      final produtoId = row['produto_id'] as int;
+      final dataAtual = row['data'] as String;
+      final anterior  = await d.rawQuery('''
+        SELECT preco_unitario FROM historico_compras
+        WHERE produto_id = ?
+          AND preco_unitario IS NOT NULL
+          AND data < ?
+        ORDER BY data DESC
+        LIMIT 1
+      ''', [produtoId, dataAtual]);
+      final mapa = Map<String, dynamic>.from(row);
+      mapa['preco_anterior'] = anterior.isEmpty
+          ? null
+          : (anterior.first['preco_unitario'] as num?)?.toDouble();
+      result.add(mapa);
+    }
+    return result;
+  }
+
+  // ─── HISTÓRICO PARA GRÁFICO ─────────────────────────────────
+  Future<List<HistoricoCompra>> getHistoricoProdutoGrafico(int produtoId) async {
+    final d = await db;
+    final rows = await d.rawQuery('''
+      SELECT h.*, l.nome AS local_nome, p.unidade
+      FROM historico_compras h
+      LEFT JOIN locais_compra l ON l.id = h.local_id
+      LEFT JOIN produtos p ON p.id = h.produto_id
+      WHERE h.produto_id = ? AND h.preco_unitario IS NOT NULL
+      ORDER BY h.data ASC
+      LIMIT 20
+    ''', [produtoId]);
+    return rows.map(HistoricoCompra.fromMap).toList();
+  }
 }
