@@ -136,6 +136,18 @@ class DatabaseHelper {
     return rows.map(Categoria.fromMap).toList();
   }
 
+  Future<int> salvarCategoria(Categoria c) async {
+    final d = await db;
+    if (c.id == null) {
+      final map = c.toMap()..remove('id');
+      return d.insert('categorias', map);
+    } else {
+      await d.update('categorias', c.toMap(),
+          where: 'id = ?', whereArgs: [c.id]);
+      return c.id!;
+    }
+  }
+
   // ─── PRODUTOS ──────────────────────────────────────────────
   Future<List<Produto>> getProdutos({bool apenasAtivos = false}) async {
     final d = await db;
