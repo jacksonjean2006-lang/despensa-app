@@ -149,6 +149,7 @@ class _CompraAvulsaScreenState extends State<CompraAvulsaScreen> {
       for (final item in _itens) {
         await DatabaseHelper.instance.registrarCompra(HistoricoCompra(
           produtoId:        item.produtoId,
+          nomeAvulso:       item.produtoId == null ? item.nome : null,
           localId:          _localSelecionado?.id,
           quantidadeComprada: item.quantidade,
           precoTotal:       item.precoTotal,
@@ -364,7 +365,9 @@ class _CompraAvulsaScreenState extends State<CompraAvulsaScreen> {
         ),
 
         // ─── Rodapé: total + botões ──────────────────────────
-        Container(
+        SafeArea(
+          top: false,
+          child: Container(
           decoration: BoxDecoration(
             color: Colors.white,
             boxShadow: [
@@ -375,7 +378,7 @@ class _CompraAvulsaScreenState extends State<CompraAvulsaScreen> {
               )
             ],
           ),
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
           child: Column(children: [
             if (_itens.isNotEmpty)
               Padding(
@@ -433,6 +436,7 @@ class _CompraAvulsaScreenState extends State<CompraAvulsaScreen> {
               ),
             ],
           ]),
+          ),
         ),
       ]),
     );

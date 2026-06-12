@@ -249,7 +249,9 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
         ),
 
         // Botões rodapé
-        Container(
+        SafeArea(
+          top: false,
+          child: Container(
           decoration: BoxDecoration(
             color: Colors.white,
             boxShadow: [BoxShadow(
@@ -257,7 +259,7 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
               blurRadius: 8, offset: const Offset(0, -2),
             )],
           ),
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
           child: Column(children: [
             OutlinedButton.icon(
               onPressed: _adicionarAvulso,
@@ -278,6 +280,7 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
               ),
             ),
           ]),
+          ),
         ),
       ]),
     );

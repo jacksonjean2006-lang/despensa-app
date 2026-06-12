@@ -19,7 +19,24 @@ class DatabaseHelper {
 
   Future<Database> _initDB() async {
     final path = join(await getDatabasesPath(), 'despensa.db');
-    return openDatabase(path, version: 1, onCreate: _onCreate);
+    return openDatabase(
+      path,
+      version: 2,
+      onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
+    );
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // adiciona coluna nome_avulso para itens de compra avulsa sem cadastro
+      final cols = await db.rawQuery("PRAGMA table_info(historico_compras)");
+      final jaTem = cols.any((c) => c['name'] == 'nome_avulso');
+      if (!jaTem) {
+        await db.execute(
+            'ALTER TABLE historico_compras ADD COLUMN nome_avulso TEXT');
+      }
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -86,6 +103,7 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         lista_id INTEGER REFERENCES listas(id),
         produto_id INTEGER REFERENCES produtos(id),
+        nome_avulso TEXT,
         local_id INTEGER REFERENCES locais_compra(id),
         quantidade_comprada REAL NOT NULL,
         preco_total REAL,
@@ -341,11 +359,11 @@ class DatabaseHelper {
     return rows.map((r) => Map<String, dynamic>.from(r)).toList();
   }
 
-  // ─── TODOS OS ÚLTIMOS PREÇOS ────────────────────────────────
+  // ─── TODOS OS ÚLTIMOS PREÇOS (cadastrados + avulsos) ──────────────────────────
   Future<List<Map<String, dynamic>>> getUltimosPrecos() async {
     final d = await db;
-    // Última compra de cada produto
-    final rows = await d.rawQuery('''
+    // Itens cadastrados — última compra de cada produto
+    final cadastrados = await d.rawQuery('''
       SELECT
         h.produto_id,
         p.nome AS produto_nome,
@@ -370,25 +388,74 @@ class DatabaseHelper {
       ORDER BY p.nome
     ''');
 
-    // Para cada produto, busca o preço anterior separadamente
+    // Itens avulsos (sem produto_id) — última compra de cada nome_avulso
+    final avulsos = await d.rawQuery('''
+      SELECT
+        NULL AS produto_id,
+        h.nome_avulso AS produto_nome,
+        'un' AS unidade,
+        '🛍️' AS categoria_icone,
+        h.preco_unitario,
+        h.preco_total,
+        h.quantidade_comprada,
+        h.data,
+        l.nome AS local_nome
+      FROM historico_compras h
+      LEFT JOIN locais_compra l ON l.id = h.local_id
+      WHERE h.produto_id IS NULL
+        AND h.preco_unitario IS NOT NULL
+        AND h.nome_avulso IS NOT NULL
+        AND h.data = (
+          SELECT MAX(h2.data) FROM historico_compras h2
+          WHERE h2.nome_avulso = h.nome_avulso
+            AND h2.produto_id IS NULL
+            AND h2.preco_unitario IS NOT NULL
+        )
+      GROUP BY h.nome_avulso
+      ORDER BY h.nome_avulso
+    ''');
+
+    final todos = [...cadastrados, ...avulsos];
+
+    // Para cada produto/avulso, busca o preço anterior separadamente
     final result = <Map<String, dynamic>>[];
-    for (final row in rows) {
-      final produtoId = row['produto_id'] as int;
-      final dataAtual = row['data'] as String;
-      final anterior  = await d.rawQuery('''
-        SELECT preco_unitario FROM historico_compras
-        WHERE produto_id = ?
-          AND preco_unitario IS NOT NULL
-          AND data < ?
-        ORDER BY data DESC
-        LIMIT 1
-      ''', [produtoId, dataAtual]);
+    for (final row in todos) {
+      final produtoId  = row['produto_id'] as int?;
+      final nomeAvulso = row['produto_nome'] as String?;
+      final dataAtual  = row['data'] as String;
+
+      List<Map<String, Object?>> anterior;
+      if (produtoId != null) {
+        anterior = await d.rawQuery('''
+          SELECT preco_unitario FROM historico_compras
+          WHERE produto_id = ?
+            AND preco_unitario IS NOT NULL
+            AND data < ?
+          ORDER BY data DESC
+          LIMIT 1
+        ''', [produtoId, dataAtual]);
+      } else {
+        anterior = await d.rawQuery('''
+          SELECT preco_unitario FROM historico_compras
+          WHERE nome_avulso = ?
+            AND produto_id IS NULL
+            AND preco_unitario IS NOT NULL
+            AND data < ?
+          ORDER BY data DESC
+          LIMIT 1
+        ''', [nomeAvulso, dataAtual]);
+      }
+
       final mapa = Map<String, dynamic>.from(row);
       mapa['preco_anterior'] = anterior.isEmpty
           ? null
           : (anterior.first['preco_unitario'] as num?)?.toDouble();
       result.add(mapa);
     }
+
+    // Ordena pelo nome
+    result.sort((a, b) => (a['produto_nome'] as String)
+        .compareTo(b['produto_nome'] as String));
     return result;
   }
 
