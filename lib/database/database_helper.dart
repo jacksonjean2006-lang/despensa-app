@@ -29,12 +29,10 @@ class DatabaseHelper {
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
-      // adiciona coluna nome_avulso para itens de compra avulsa sem cadastro
       final cols = await db.rawQuery("PRAGMA table_info(historico_compras)");
       final jaTem = cols.any((c) => c['name'] == 'nome_avulso');
       if (!jaTem) {
-        await db.execute(
-            'ALTER TABLE historico_compras ADD COLUMN nome_avulso TEXT');
+        await db.execute('ALTER TABLE historico_compras ADD COLUMN nome_avulso TEXT');
       }
     }
   }
@@ -142,8 +140,7 @@ class DatabaseHelper {
       final map = c.toMap()..remove('id');
       return d.insert('categorias', map);
     } else {
-      await d.update('categorias', c.toMap(),
-          where: 'id = ?', whereArgs: [c.id]);
+      await d.update('categorias', c.toMap(), where: 'id = ?', whereArgs: [c.id]);
       return c.id!;
     }
   }
@@ -174,8 +171,7 @@ class DatabaseHelper {
     if (p.id == null) {
       return d.insert('produtos', p.toMap());
     } else {
-      await d.update('produtos', p.toMap(),
-          where: 'id = ?', whereArgs: [p.id]);
+      await d.update('produtos', p.toMap(), where: 'id = ?', whereArgs: [p.id]);
       return p.id!;
     }
   }
@@ -188,8 +184,7 @@ class DatabaseHelper {
   // ─── ESTOQUE ───────────────────────────────────────────────
   Future<void> atualizarEstoque(int produtoId, double quantidade) async {
     final d = await db;
-    final existe = await d.query('estoque',
-        where: 'produto_id = ?', whereArgs: [produtoId]);
+    final existe = await d.query('estoque', where: 'produto_id = ?', whereArgs: [produtoId]);
     final agora = DateTime.now().toIso8601String();
     if (existe.isEmpty) {
       await d.insert('estoque', {
@@ -235,6 +230,13 @@ class DatabaseHelper {
     return rows.isEmpty ? null : rows.first;
   }
 
+  Future<List<Map<String, dynamic>>> getListasFinalizadas() async {
+    final d = await db;
+    return d.query('listas',
+        where: 'finalizado_em IS NOT NULL',
+        orderBy: 'finalizado_em DESC');
+  }
+
   // ─── ITENS DA LISTA ────────────────────────────────────────
   Future<List<ListaItem>> getItensDaLista(int listaId) async {
     final d = await db;
@@ -271,7 +273,7 @@ class DatabaseHelper {
   Future<void> gerarListaAutomatica(int listaId) async {
     final d = await db;
     final rows = await d.rawQuery('''
-      SELECT p.id, p.nome, p.unidade, p.consumo_mensal,
+      SELECT p.id, p.nome, p.unidade, p.consumo_mensal, p.estoque_minimo,
              COALESCE((
                SELECT quantidade FROM estoque
                WHERE produto_id = p.id
@@ -287,17 +289,25 @@ class DatabaseHelper {
                LIMIT 1
              ), 0)) > 0
     ''');
+
     for (final row in rows) {
-      final qtd = (row['consumo_mensal'] as num).toDouble() -
-          (row['estoque_atual'] as num).toDouble();
-      await d.insert('lista_itens', {
-        'lista_id': listaId,
-        'produto_id': row['id'],
-        'quantidade': qtd,
-        'unidade': row['unidade'],
-        'marcado': 0,
-        'substituto': 0,
-      });
+      // Verifica se o produto já está na lista
+      final jaTem = await d.query('lista_itens',
+          where: 'lista_id = ? AND produto_id = ?',
+          whereArgs: [listaId, row['id']]);
+      
+      if (jaTem.isEmpty) {
+        final qtd = (row['consumo_mensal'] as num).toDouble() -
+            (row['estoque_atual'] as num).toDouble();
+        await d.insert('lista_itens', {
+          'lista_id': listaId,
+          'produto_id': row['id'],
+          'quantidade': qtd,
+          'unidade': row['unidade'],
+          'marcado': 0,
+          'substituto': 0,
+        });
+      }
     }
   }
 
@@ -314,8 +324,7 @@ class DatabaseHelper {
     if (local.id == null) {
       return d.insert('locais_compra', local.toMap());
     } else {
-      await d.update('locais_compra', local.toMap(),
-          where: 'id = ?', whereArgs: [local.id]);
+      await d.update('locais_compra', local.toMap(), where: 'id = ?', whereArgs: [local.id]);
       return local.id!;
     }
   }
@@ -324,13 +333,9 @@ class DatabaseHelper {
   Future<void> registrarCompra(HistoricoCompra h) async {
     final d = await db;
     await d.insert('historico_compras', h.toMap());
-    // Atualiza estoque somando o que foi comprado
     if (h.produtoId != null) {
-      final rows = await d.query('estoque',
-          where: 'produto_id = ?', whereArgs: [h.produtoId]);
-      final atual = rows.isEmpty
-          ? 0.0
-          : (rows.first['quantidade'] as num).toDouble();
+      final rows = await d.query('estoque', where: 'produto_id = ?', whereArgs: [h.produtoId]);
+      final atual = rows.isEmpty ? 0.0 : (rows.first['quantidade'] as num).toDouble();
       await atualizarEstoque(h.produtoId!, atual + h.quantidadeComprada);
     }
   }
@@ -346,6 +351,18 @@ class DatabaseHelper {
       ORDER BY h.data DESC
     ''', [produtoId]);
     return rows.map(HistoricoCompra.fromMap).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> getItensHistoricoPorLista(int listaId) async {
+    final d = await db;
+    return d.rawQuery('''
+      SELECT h.*, p.nome AS produto_nome, l.nome AS local_nome
+      FROM historico_compras h
+      LEFT JOIN produtos p ON p.id = h.produto_id
+      LEFT JOIN locais_compra l ON l.id = h.local_id
+      WHERE h.lista_id = ?
+      ORDER BY p.nome, h.nome_avulso
+    ''', [listaId]);
   }
 
   Future<HistoricoCompra?> getUltimaCompra(int produtoId) async {
@@ -371,10 +388,9 @@ class DatabaseHelper {
     return rows.map((r) => Map<String, dynamic>.from(r)).toList();
   }
 
-  // ─── TODOS OS ÚLTIMOS PREÇOS (cadastrados + avulsos) ──────────────────────────
+  // ─── TODOS OS ÚLTIMOS PREÇOS ───────────────────────────────
   Future<List<Map<String, dynamic>>> getUltimosPrecos() async {
     final d = await db;
-    // Itens cadastrados — última compra de cada produto
     final cadastrados = await d.rawQuery('''
       SELECT
         h.produto_id,
@@ -400,7 +416,6 @@ class DatabaseHelper {
       ORDER BY p.nome
     ''');
 
-    // Itens avulsos (sem produto_id) — última compra de cada nome_avulso
     final avulsos = await d.rawQuery('''
       SELECT
         NULL AS produto_id,
@@ -428,61 +443,31 @@ class DatabaseHelper {
     ''');
 
     final todos = [...cadastrados, ...avulsos];
-
-    // Para cada produto/avulso, busca o preço anterior separadamente
     final result = <Map<String, dynamic>>[];
     for (final row in todos) {
-      final produtoId  = row['produto_id'] as int?;
+      final produtoId = row['produto_id'] as int?;
       final nomeAvulso = row['produto_nome'] as String?;
-      final dataAtual  = row['data'] as String;
+      final dataAtual = row['data'] as String;
 
       List<Map<String, Object?>> anterior;
       if (produtoId != null) {
         anterior = await d.rawQuery('''
           SELECT preco_unitario FROM historico_compras
-          WHERE produto_id = ?
-            AND preco_unitario IS NOT NULL
-            AND data < ?
-          ORDER BY data DESC
-          LIMIT 1
+          WHERE produto_id = ? AND preco_unitario IS NOT NULL AND data < ?
+          ORDER BY data DESC LIMIT 1
         ''', [produtoId, dataAtual]);
       } else {
         anterior = await d.rawQuery('''
           SELECT preco_unitario FROM historico_compras
-          WHERE nome_avulso = ?
-            AND produto_id IS NULL
-            AND preco_unitario IS NOT NULL
-            AND data < ?
-          ORDER BY data DESC
-          LIMIT 1
+          WHERE nome_avulso = ? AND produto_id IS NULL AND preco_unitario IS NOT NULL AND data < ?
+          ORDER BY data DESC LIMIT 1
         ''', [nomeAvulso, dataAtual]);
       }
-
       final mapa = Map<String, dynamic>.from(row);
-      mapa['preco_anterior'] = anterior.isEmpty
-          ? null
-          : (anterior.first['preco_unitario'] as num?)?.toDouble();
+      mapa['preco_anterior'] = anterior.isEmpty ? null : (anterior.first['preco_unitario'] as num?)?.toDouble();
       result.add(mapa);
     }
-
-    // Ordena pelo nome
-    result.sort((a, b) => (a['produto_nome'] as String)
-        .compareTo(b['produto_nome'] as String));
+    result.sort((a, b) => (a['produto_nome'] as String).compareTo(b['produto_nome'] as String));
     return result;
-  }
-
-  // ─── HISTÓRICO PARA GRÁFICO ─────────────────────────────────
-  Future<List<HistoricoCompra>> getHistoricoProdutoGrafico(int produtoId) async {
-    final d = await db;
-    final rows = await d.rawQuery('''
-      SELECT h.*, l.nome AS local_nome, p.unidade
-      FROM historico_compras h
-      LEFT JOIN locais_compra l ON l.id = h.local_id
-      LEFT JOIN produtos p ON p.id = h.produto_id
-      WHERE h.produto_id = ? AND h.preco_unitario IS NOT NULL
-      ORDER BY h.data ASC
-      LIMIT 20
-    ''', [produtoId]);
-    return rows.map(HistoricoCompra.fromMap).toList();
   }
 }
