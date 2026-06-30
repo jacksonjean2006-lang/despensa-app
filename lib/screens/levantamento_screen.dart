@@ -49,21 +49,24 @@ class _LevantamentoScreenState extends State<LevantamentoScreen> {
       final v = double.tryParse(_ctrls[p.id!]?.text ?? '') ?? 0;
       await DatabaseHelper.instance.atualizarEstoque(p.id!, v);
     }
-    // Verifica se já existe lista aberta
+    // Verifica se já existe lista aberta ou cria uma nova
     var lista = await DatabaseHelper.instance.getListaAberta();
     int listaId;
     if (lista == null) {
       final mes = _mesAtual();
       listaId = await DatabaseHelper.instance.criarLista('Compras de $mes');
-      await DatabaseHelper.instance.gerarListaAutomatica(listaId);
     } else {
       listaId = lista['id'] as int;
     }
+    
+    // SEMPRE chama a geração automática para adicionar novos itens que faltam
+    await DatabaseHelper.instance.gerarListaAutomatica(listaId);
+    
     setState(() => _salvando = false);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Lista gerada com sucesso!'),
+          content: Text('Lista atualizada com sucesso!'),
           backgroundColor: AppTheme.success,
         ),
       );
@@ -140,7 +143,7 @@ class _LevantamentoScreenState extends State<LevantamentoScreen> {
           child: ElevatedButton.icon(
             onPressed: _salvando ? null : _gerarLista,
             icon: const Icon(Icons.shopping_cart_outlined),
-            label: Text(_salvando ? 'Gerando...' : 'Gerar Lista de Compras'),
+            label: Text(_salvando ? 'Gerando...' : 'Gerar/Atualizar Lista'),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primary,
               foregroundColor: Colors.white,
@@ -167,13 +170,11 @@ class _ItemLevantamentoState extends State<_ItemLevantamento> {
     final d = widget.produto.consumoMensal - _atual;
     return d > 0 ? d : 0;
   }
-
   @override
   void initState() {
     super.initState();
     widget.ctrl.addListener(() => setState(() {}));
   }
-
   @override
   Widget build(BuildContext context) {
     return Card(
