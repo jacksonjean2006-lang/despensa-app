@@ -163,4 +163,49 @@ class DatabaseHelper {
   }
 
   Future<int> salvarProduto(Produto p) async {
-    final
+    final d = await db;
+    if (p.id == null) {
+      return await d.insert('produtos', p.toMap());
+    } else {
+      await d.update('produtos', p.toMap(), where: 'id = ?', whereArgs: [p.id]);
+      return p.id!;
+    }
+  }
+
+  Future<void> deletarProduto(int id) async {
+    final d = await db;
+    await d.delete('produtos', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ─── ESTOQUE ───────────────────────────────────────────────
+  Future<void> atualizarEstoque(int produtoId, double quantidade) async {
+    final d = await db;
+    final agora = DateTime.now().toIso8601String();
+    final existe = await d.query('estoque', where: 'produto_id = ?', whereArgs: [produtoId]);
+
+    if (existe.isEmpty) {
+      await d.insert('estoque', {
+        'produto_id': produtoId,
+        'quantidade': quantidade,
+        'atualizado_em': agora,
+      });
+    } else {
+      await d.update(
+        'estoque',
+        {'quantidade': quantidade, 'atualizado_em': agora},
+        where: 'produto_id = ?',
+        whereArgs: [produtoId],
+      );
+    }
+  }
+
+  // ─── LISTAS ────────────────────────────────────────────────
+  Future<int> criarLista(String descricao) async {
+    final d = await db;
+    return d.insert('listas', {
+      'descricao': descricao,
+      'criado_em': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<void> finalizarLista(int listaId
