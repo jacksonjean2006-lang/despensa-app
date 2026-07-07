@@ -30,9 +30,9 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
     setState(() => _carregando = true);
     final lista = await DatabaseHelper.instance.getListaAberta();
     if (lista != null) {
-      _listaId   = lista['id'] as int;
+      _listaId = lista['id'] as int;
       _listaDesc = lista['descricao'] as String;
-      _itens     = await DatabaseHelper.instance.getItensDaLista(_listaId!);
+      _itens = await DatabaseHelper.instance.getItensDaLista(_listaId!);
     } else {
       _listaId = null;
       _itens = [];
@@ -54,8 +54,7 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
     return total;
   }
 
-  int get _itensComPreco =>
-      _itens.where((i) {
+  int get _itensComPreco => _itens.where((i) {
         final key = i.produtoId ?? i.id ?? 0;
         return _precosEditados[key]?.precoTotal != null;
       }).length;
@@ -77,10 +76,10 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
     );
     if (result != null) {
       final item = ListaItem(
-        listaId:    _listaId!,
+        listaId: _listaId!,
         nomeAvulso: result['nome'],
         quantidade: result['quantidade'],
-        unidade:    result['unidade'],
+        unidade: result['unidade'],
         substituto: result['substituto'] ?? false,
       );
       await DatabaseHelper.instance.adicionarItem(item);
@@ -92,15 +91,15 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
     final locais = await DatabaseHelper.instance.getLocais();
     if (!mounted) return;
 
-    final key      = item.produtoId ?? item.id ?? 0;
+    final key = item.produtoId ?? item.id ?? 0;
     final anterior = _precosEditados[key];
 
     final resultado = await showDialog<_PrecoEditado>(
       context: context,
       builder: (_) => _DialogRegistrarPreco(
-        item:      item,
-        locais:    locais,
-        anterior:  anterior,
+        item: item,
+        locais: locais,
+        anterior: anterior,
       ),
     );
 
@@ -124,19 +123,18 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
 
     final agora = DateTime.now().toIso8601String();
     for (final item in _itens.where((i) => i.marcado)) {
-      final key     = item.produtoId ?? item.id ?? 0;
+      final key = item.produtoId ?? item.id ?? 0;
       final editado = _precosEditados[key];
 
-      // REGISTRA TUDO NO HISTÓRICO (Produtos e Avulsos)
       await DatabaseHelper.instance.registrarCompra(HistoricoCompra(
-        listaId:            _listaId,
-        produtoId:          item.produtoId,
-        nomeAvulso:         item.nomeAvulso,
-        localId:            editado?.localId ?? localIdGeral,
+        listaId: _listaId,
+        produtoId: item.produtoId,
+        nomeAvulso: item.nomeAvulso,
+        localId: editado?.localId ?? localIdGeral,
         quantidadeComprada: editado?.quantidade ?? item.quantidade,
-        precoTotal:         editado?.precoTotal,
-        precoUnitario:      editado?.precoUnitario,
-        data:               agora,
+        precoTotal: editado?.precoTotal,
+        precoUnitario: editado?.precoUnitario,
+        data: agora,
       ));
     }
 
@@ -157,15 +155,13 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
   }
 
   void _compartilhar() {
-    // Lógica de compartilhar como texto (WhatsApp)
     String texto = "*🛒 $_listaDesc*\n\n";
     for (var item in _itens) {
       String status = item.marcado ? "✅" : "⬜";
       String nome = item.produtoNome ?? item.nomeAvulso ?? "Item";
       texto += "$status $nome (${formatarQtd(item.quantidade, item.unidade)})\n";
     }
-    // Aqui usaria o package share_plus no Flutter real
-    print(texto);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copiado para o console')));
   }
 
   @override
@@ -180,8 +176,7 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
             const Icon(Icons.shopping_cart_outlined, size: 64, color: Colors.grey),
             const SizedBox(height: 16),
-            const Text('Nenhuma lista aberta',
-                style: TextStyle(fontSize: 16, color: Colors.grey)),
+            const Text('Nenhuma lista aberta', style: TextStyle(fontSize: 16, color: Colors.grey)),
             const SizedBox(height: 8),
             const Text(
               'Vá em Estoque e faça o levantamento\npara gerar sua lista automaticamente.',
@@ -197,46 +192,30 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
       appBar: AppBar(
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(_listaDesc, style: const TextStyle(fontSize: 16)),
-          Text('${_marcados}/${_itens.length} marcados',
-              style: const TextStyle(fontSize: 11, color: Colors.white70)),
+          Text('${_marcados}/${_itens.length} marcados', style: const TextStyle(fontSize: 11, color: Colors.white70)),
         ]),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.share_outlined),
-            onPressed: _compartilhar,
-            tooltip: 'Compartilhar lista',
-          ),
+          IconButton(icon: const Icon(Icons.share_outlined), onPressed: _compartilhar, tooltip: 'Compartilhar lista'),
         ],
       ),
       body: Column(children: [
         LinearProgressIndicator(
-          value:           _itens.isEmpty ? 0 : _marcados / _itens.length,
+          value: _itens.isEmpty ? 0 : _marcados / _itens.length,
           backgroundColor: Colors.grey.shade200,
-          valueColor:      const AlwaysStoppedAnimation(AppTheme.success),
-          minHeight:       4,
+          valueColor: const AlwaysStoppedAnimation(AppTheme.success),
+          minHeight: 4,
         ),
         if (_totalCompra > 0)
           Container(
-            width:   double.infinity,
+            width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            color:   AppTheme.primary.withOpacity(0.08),
+            color: AppTheme.primary.withOpacity(0.08),
             child: Row(children: [
-              const Icon(Icons.shopping_bag_outlined,
-                  size: 18, color: AppTheme.primary),
+              const Icon(Icons.shopping_bag_outlined, size: 18, color: AppTheme.primary),
               const SizedBox(width: 8),
-              Text(
-                '$_itensComPreco item${_itensComPreco != 1 ? 's' : ''} com preço',
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
-              ),
+              Text('$_itensComPreco item${_itensComPreco != 1 ? 's' : ''} com preço', style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
               const Spacer(),
-              Text(
-                'Total: ${formatarMoeda(_totalCompra)}',
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.primary,
-                ),
-              ),
+              Text('Total: ${formatarMoeda(_totalCompra)}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.primary)),
             ]),
           ),
         Expanded(
@@ -245,13 +224,13 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
               : ListView(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
                   children: _itens.map((item) {
-                    final key     = item.produtoId ?? item.id ?? 0;
+                    final key = item.produtoId ?? item.id ?? 0;
                     final editado = _precosEditados[key];
                     return _ItemLista(
-                      item:          item,
-                      precoEditado:  editado,
-                      onToggle:      () => _toggleMarcado(item),
-                      onRemover:     () => _removerItem(item),
+                      item: item,
+                      precoEditado: editado,
+                      onToggle: () => _toggleMarcado(item),
+                      onRemover: () => _removerItem(item),
                       onRegistrarPreco: () => _registrarPreco(item),
                     );
                   }).toList(),
@@ -282,8 +261,6 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
   }
 }
 
-// Classes auxiliares e Dialogs permanecem as mesmas do arquivo original...
-// (Mantendo a estrutura para não quebrar o código existente)
 class _PrecoEditado {
   final double quantidade;
   final double? precoTotal;
@@ -316,4 +293,118 @@ class _ItemLista extends StatelessWidget {
     );
   }
 }
-// (Omitindo o restante dos dialogs para brevidade, mas eles devem ser mantidos no arquivo final)
+
+class _DialogAvulso extends StatefulWidget {
+  final int listaId;
+  const _DialogAvulso({required this.listaId});
+  @override
+  State<_DialogAvulso> createState() => _DialogAvulsoState();
+}
+
+class _DialogAvulsoState extends State<_DialogAvulso> {
+  final _nomeCtrl = TextEditingController();
+  final _qtdCtrl = TextEditingController(text: '1');
+  String _unidade = 'un';
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Item Avulso'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: _nomeCtrl, decoration: const InputDecoration(labelText: 'O que comprar?')),
+        Row(children: [
+          Expanded(child: TextField(controller: _qtdCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Qtd'))),
+          const SizedBox(width: 10),
+          DropdownButton<String>(
+            value: _unidade,
+            items: ['un', 'kg', 'L', 'g', 'ml'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+            onChanged: (v) => setState(() => _unidade = v!),
+          ),
+        ]),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, {'nome': _nomeCtrl.text, 'quantidade': double.tryParse(_qtdCtrl.text) ?? 1, 'unidade': _unidade}),
+          child: const Text('Adicionar'),
+        ),
+      ],
+    );
+  }
+}
+
+class _DialogRegistrarPreco extends StatefulWidget {
+  final ListaItem item;
+  final List<LocalCompra> locais;
+  final _PrecoEditado? anterior;
+  const _DialogRegistrarPreco({required this.item, required this.locais, this.anterior});
+  @override
+  State<_DialogRegistrarPreco> createState() => _DialogRegistrarPrecoState();
+}
+
+class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
+  late TextEditingController _qtdCtrl, _totalCtrl;
+  int? _localId;
+
+  @override
+  void initState() {
+    super.initState();
+    _qtdCtrl = TextEditingController(text: (widget.anterior?.quantidade ?? widget.item.quantidade).toString());
+    _totalCtrl = TextEditingController(text: widget.anterior?.precoTotal?.toString() ?? '');
+    _localId = widget.anterior?.localId;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.item.produtoNome ?? widget.item.nomeAvulso ?? 'Preço'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: _qtdCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Quantidade')),
+        TextField(controller: _totalCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Preço Total')),
+        DropdownButtonFormField<int>(
+          value: _localId,
+          items: widget.locais.map((l) => DropdownMenuItem(value: l.id, child: Text(l.nome))).toList(),
+          onChanged: (v) => setState(() => _localId = v),
+          decoration: const InputDecoration(labelText: 'Local'),
+        ),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        ElevatedButton(
+          onPressed: () {
+            final q = double.tryParse(_qtdCtrl.text) ?? 1;
+            final t = double.tryParse(_totalCtrl.text);
+            Navigator.pop(context, _PrecoEditado(quantidade: q, precoTotal: t, precoUnitario: t != null ? t / q : null, localId: _localId));
+          },
+          child: const Text('Salvar'),
+        ),
+      ],
+    );
+  }
+}
+
+class _DialogSelecionarLocal extends StatefulWidget {
+  final List<LocalCompra> locais;
+  const _DialogSelecionarLocal({required this.locais});
+  @override
+  State<_DialogSelecionarLocal> createState() => _DialogSelecionarLocalState();
+}
+
+class _DialogSelecionarLocalState extends State<_DialogSelecionarLocal> {
+  int? _localId;
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Onde você comprou?'),
+      content: DropdownButtonFormField<int>(
+        value: _localId,
+        items: widget.locais.map((l) => DropdownMenuItem(value: l.id, child: Text(l.nome))).toList(),
+        onChanged: (v) => setState(() => _localId = v),
+        decoration: const InputDecoration(labelText: 'Local Geral'),
+      ),
+      actions: [
+        ElevatedButton(onPressed: () => Navigator.pop(context, _localId), child: const Text('Finalizar')),
+      ],
+    );
+  }
+}

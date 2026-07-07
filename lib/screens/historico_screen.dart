@@ -12,8 +12,7 @@ class HistoricoScreen extends StatefulWidget {
   State<HistoricoScreen> createState() => _HistoricoScreenState();
 }
 
-class _HistoricoScreenState extends State<HistoricoScreen>
-    with SingleTickerProviderStateMixin {
+class _HistoricoScreenState extends State<HistoricoScreen> with SingleTickerProviderStateMixin {
   late TabController _tabs;
 
   @override
@@ -42,8 +41,8 @@ class _HistoricoScreenState extends State<HistoricoScreen>
           tabs: const [
             Tab(icon: Icon(Icons.list_alt_rounded, size: 18), text: 'Listas'),
             Tab(icon: Icon(Icons.grid_view_rounded, size: 18), text: 'Visão Geral'),
-            Tab(icon: Icon(Icons.bar_chart_rounded, size: 18),  text: 'Gastos'),
-            Tab(icon: Icon(Icons.search_rounded, size: 18),     text: 'Produtos'),
+            Tab(icon: Icon(Icons.bar_chart_rounded, size: 18), text: 'Gastos'),
+            Tab(icon: Icon(Icons.search_rounded, size: 18), text: 'Produtos'),
           ],
         ),
       ),
@@ -60,7 +59,6 @@ class _HistoricoScreenState extends State<HistoricoScreen>
   }
 }
 
-// ─── NOVA ABA: Listas Anteriores ──────────────────────────────────────────────
 class _AbaListasAnteriores extends StatefulWidget {
   const _AbaListasAnteriores();
   @override
@@ -80,7 +78,10 @@ class _AbaListasAnterioresState extends State<_AbaListasAnteriores> {
   Future<void> _carregar() async {
     setState(() => _carregando = true);
     final data = await DatabaseHelper.instance.getListasFinalizadas();
-    setState(() { _listas = data; _carregando = false; });
+    setState(() {
+      _listas = data;
+      _carregando = false;
+    });
   }
 
   @override
@@ -145,8 +146,20 @@ class _AbaListasAnterioresState extends State<_AbaListasAnteriores> {
   }
 }
 
-// (As outras abas _AbaVisaoGeral, _AbaGastos, _AbaProdutos permanecem iguais...)
-// [Conteúdo omitido para brevidade, mas deve ser mantido no arquivo final]
-class _AbaVisaoGeral extends StatelessWidget { const _AbaVisaoGeral(); @override Widget build(BuildContext context) => const Center(child: Text('Visão Geral')); }
-class _AbaGastos extends StatelessWidget { const _AbaGastos(); @override Widget build(BuildContext context) => const Center(child: Text('Gastos')); }
-class _AbaProdutos extends StatelessWidget { const _AbaProdutos(); @override Widget build(BuildContext context) => const Center(child: Text('Produtos')); }
+class _AbaVisaoGeral extends StatelessWidget {
+  const _AbaVisaoGeral();
+  @override
+  Widget build(BuildContext context) => const Center(child: Text('Visão Geral'));
+}
+
+class _AbaGastos extends StatelessWidget {
+  const _AbaGastos();
+  @override
+  Widget build(BuildContext context) => const Center(child: Text('Gastos'));
+}
+
+class _AbaProdutos extends StatelessWidget {
+  const _AbaProdutos();
+  @override
+  Widget build(BuildContext context) => const Center(child: Text('Produtos'));
+}
