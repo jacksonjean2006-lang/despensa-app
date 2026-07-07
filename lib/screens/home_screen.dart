@@ -33,7 +33,6 @@ class HomeScreen extends StatelessWidget {
                 MaterialPageRoute(builder: (_) => const CompraAvulsaScreen()),
               );
               if (alterou == true) {
-                // força rebuild do FutureBuilder
                 (context as Element).markNeedsBuild();
               }
             },
@@ -63,7 +62,6 @@ class HomeScreen extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.all(12),
               children: [
-                // Botão compra avulsa
                 Card(
                   color: AppTheme.primary.withOpacity(0.06),
                   child: ListTile(
@@ -84,7 +82,6 @@ class HomeScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
 
-                // Estatísticas
                 Row(children: [
                   _StatCard(label: 'produtos', valor: '${produtos.length}', cor: null),
                   const SizedBox(width: 8),
@@ -95,7 +92,6 @@ class HomeScreen extends StatelessWidget {
                 ]),
                 const SizedBox(height: 8),
 
-                // Alerta
                 if (precisamCompra > 0)
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -160,3 +156,81 @@ class HomeScreen extends StatelessWidget {
                 letterSpacing: 0.4)),
       );
 }
+
+// Mantemos os widgets auxiliares fora da classe HomeScreen
+class _StatCard extends StatelessWidget {
+  final String label, valor;
+  final Color? cor;
+  const _StatCard({required this.label, required this.valor, this.cor});
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+            const SizedBox(height: 4),
+            Text(valor,
+                style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: cor ?? Colors.black87)),
+          ]),
+        ),
+      );
+}
+
+class _ProdutoHomeCard extends StatelessWidget {
+  final Produto produto;
+  const _ProdutoHomeCard(this.produto);
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = produto.consumoMensal > 0
+        ? ((produto.estoqueAtual ?? 0) / produto.consumoMensal).clamp(0.0, 1.0)
+        : 0.0;
+    final corBarra = produto.statusEstoque == 'critico'
+        ? AppTheme.danger
+        : produto.statusEstoque == 'atencao'
+            ? const Color(0xFFEF9F27)
+            : AppTheme.success;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(children: [
+          FotoOuEmoji(fotoPath: produto.fotoPath, icone: produto.categoriaIcone ?? '📦'),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(produto.nome, style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text(
+                'estoque: ${formatarQtd(produto.estoqueAtual ?? 0, produto.unidade)}'
+                ' · meta: ${formatarQtd(produto.consumoMensal, produto.unidade)}/mês',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 4),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(2),
+                child: LinearProgressIndicator(
+                  value: pct,
+                  backgroundColor: Colors.grey.shade200,
+                  valueColor: AlwaysStoppedAnimation(corBarra),
+                  minHeight: 4,
+                ),
+              ),
+            ]),
+          ),
+          const SizedBox(width: 8),
+          StatusBadge(produto.statusEstoque),
+        ]),
+      ),
+    );
+  }
+}
+              
