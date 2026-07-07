@@ -114,7 +114,7 @@ class DatabaseHelper {
 
   Future<void> _seed(Database db) async {
     final cats = [
-      {'nome': 'Alimentação', 'icone': '🍎'},
+      {'nome': 'Mercearia', 'icone': '🍞'},
       {'nome': 'Limpeza', 'icone': '🧹'},
       {'nome': 'Higiene', 'icone': '🪥'},
       {'nome': 'Bebidas', 'icone': '🥤'},
@@ -267,26 +267,32 @@ class DatabaseHelper {
 
   Future<void> gerarListaAutomatica(int listaId) async {
     final d = await db;
+
+    // Busca todos os produtos ativos com consumo maior que estoque
     final rows = await d.rawQuery('''
-      SELECT p.id, p.nome, p.unidade, p.consumo_mensal, p.estoque_minimo,
-             e.quantidade AS estoque_atual
+      SELECT p.id, p.nome, p.unidade, p.consumo_mensal,
+             IFNULL(e.quantidade, 0) AS estoque_atual
       FROM produtos p
       LEFT JOIN estoque e ON e.produto_id = p.id
       WHERE p.ativo = 1
         AND (p.consumo_mensal - IFNULL(e.quantidade, 0)) > 0
     ''');
 
-    for (final row in rows) {
-      final jaTem = await d.query('lista_itens',
-          where: 'lista_id = ? AND produto_id = ?',
-          whereArgs: [listaId, row['id']]);
+    // Busca todos os produtos já existentes na lista
+    final existentes = await d.query('lista_itens',
+        columns: ['produto_id'], where: 'lista_id = ?', whereArgs: [listaId]);
+    final idsExistentes =
+        existentes.map((e) => e['produto_id'] as int?).whereType<int>().toSet();
 
-      if (jaTem.isEmpty) {
+    // Insere apenas os que não estão na lista
+    for (final row in rows) {
+      final produtoId = row['id'] as int;
+      if (!idsExistentes.contains(produtoId)) {
         final qtd = (row['consumo_mensal'] as num).toDouble() -
-            (row['estoque_atual'] as num? ?? 0).toDouble();
+            (row['estoque_atual'] as num).toDouble();
         await d.insert('lista_itens', {
           'lista_id': listaId,
-          'produto_id': row['id'],
+          'produto_id': produtoId,
           'quantidade': qtd,
           'unidade': row['unidade'],
           'marcado': 0,
@@ -318,6 +324,8 @@ class DatabaseHelper {
   Future<void> registrarCompra(HistoricoCompra h) async {
     final d = await db;
     await d.insert('historico_compras', h.toMap());
+
+    // Atualiza estoque se for produto cadastrado
     if (h.produtoId != null) {
       final rows = await d.query('estoque',
           where: 'produto_id = ?', whereArgs: [h.produtoId]);
