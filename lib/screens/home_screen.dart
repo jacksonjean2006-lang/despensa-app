@@ -19,22 +19,21 @@ class HomeScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: Colors.lightBlue.shade400, // azul‑claro
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(saudacao, style: const TextStyle(fontSize: 12, color: Colors.white70)),
-          const Text('Minha Despensa', style: TextStyle(fontSize: 18)),
+          const Text('Minha Despensa', style: TextStyle(fontSize: 18, color: Colors.white)),
         ]),
         actions: [
           IconButton(
-            icon: const Icon(Icons.shopping_bag_outlined),
+            icon: const Icon(Icons.shopping_bag_outlined, color: Colors.white),
             tooltip: 'Compra avulsa',
             onPressed: () async {
               final alterou = await Navigator.push<bool>(
                 context,
                 MaterialPageRoute(builder: (_) => const CompraAvulsaScreen()),
               );
-              if (alterou == true) {
-                (context as Element).markNeedsBuild();
-              }
+              if (alterou == true) (context as Element).markNeedsBuild();
             },
           ),
         ],
@@ -43,10 +42,26 @@ class HomeScreen extends StatelessWidget {
         future: _carregarProdutos(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            // Barra de carregamento linear azul‑claro
+            return Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('Carregando produtos...', style: TextStyle(color: Colors.grey)),
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 40),
+                  child: LinearProgressIndicator(
+                    minHeight: 6,
+                    backgroundColor: Colors.lightBlue.shade100,
+                    valueColor: AlwaysStoppedAnimation(Colors.lightBlue.shade400),
+                  ),
+                ),
+              ],
+            );
           }
+
           if (snapshot.hasError) {
-            return Center(child: Text('Erro ao carregar produtos'));
+            return const Center(child: Text('Erro ao carregar produtos'));
           }
 
           final produtos = snapshot.data ?? [];
@@ -56,21 +71,19 @@ class HomeScreen extends StatelessWidget {
           final precisamCompra = produtos.where((p) => p.quantidadeComprar > 0).length;
 
           return RefreshIndicator(
-            onRefresh: () async {
-              (context as Element).markNeedsBuild();
-            },
+            onRefresh: () async => (context as Element).markNeedsBuild(),
             child: ListView(
               padding: const EdgeInsets.all(12),
               children: [
                 Card(
-                  color: AppTheme.primary.withOpacity(0.06),
+                  color: Colors.lightBlue.shade50,
                   child: ListTile(
-                    leading: const Icon(Icons.shopping_bag_outlined, color: AppTheme.primary),
+                    leading: const Icon(Icons.shopping_bag_outlined, color: Colors.lightBlue),
                     title: const Text('Compra avulsa',
-                        style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.primary)),
+                        style: TextStyle(fontWeight: FontWeight.w600, color: Colors.lightBlue)),
                     subtitle: const Text('Registre uma compra sem gerar lista',
                         style: TextStyle(fontSize: 12)),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: AppTheme.primary),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.lightBlue),
                     onTap: () async {
                       final alterou = await Navigator.push<bool>(
                         context,
@@ -115,17 +128,14 @@ class HomeScreen extends StatelessWidget {
                   _sectionLabel('⚠️ Estoque crítico'),
                   ...criticos.map((p) => _ProdutoHomeCard(p)),
                 ],
-
                 if (atencao.isNotEmpty) ...[
                   _sectionLabel('🔔 Atenção'),
                   ...atencao.map((p) => _ProdutoHomeCard(p)),
                 ],
-
                 if (ok.isNotEmpty) ...[
                   _sectionLabel('✅ Estoque ok'),
                   ...ok.map((p) => _ProdutoHomeCard(p)),
                 ],
-
                 if (produtos.isEmpty)
                   const Padding(
                     padding: EdgeInsets.all(32),
@@ -157,7 +167,6 @@ class HomeScreen extends StatelessWidget {
       );
 }
 
-// Mantemos os widgets auxiliares fora da classe HomeScreen
 class _StatCard extends StatelessWidget {
   final String label, valor;
   final Color? cor;
@@ -224,13 +233,3 @@ class _ProdutoHomeCard extends StatelessWidget {
                   minHeight: 4,
                 ),
               ),
-            ]),
-          ),
-          const SizedBox(width: 8),
-          StatusBadge(produto.statusEstoque),
-        ]),
-      ),
-    );
-  }
-}
-              
