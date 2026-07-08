@@ -16,14 +16,16 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final hora = DateTime.now().hour;
     final saudacao = hora < 12 ? 'Bom dia!' : hora < 18 ? 'Boa tarde!' : 'Boa noite!';
-
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.lightBlue.shade400, // azul‑claro
-        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(saudacao, style: const TextStyle(fontSize: 12, color: Colors.white70)),
-          const Text('Minha Despensa', style: TextStyle(fontSize: 18, color: Colors.white)),
-        ]),
+        backgroundColor: Colors.lightBlue.shade400,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(saudacao, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+            const Text('Minha Despensa', style: TextStyle(fontSize: 18, color: Colors.white)),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.shopping_bag_outlined, color: Colors.white),
@@ -42,7 +44,6 @@ class HomeScreen extends StatelessWidget {
         future: _carregarProdutos(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            // Barra de carregamento linear azul‑claro
             return Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -59,11 +60,6 @@ class HomeScreen extends StatelessWidget {
               ],
             );
           }
-
-          if (snapshot.hasError) {
-            return const Center(child: Text('Erro ao carregar produtos'));
-          }
-
           final produtos = snapshot.data ?? [];
           final criticos = produtos.where((p) => p.statusEstoque == 'critico').toList();
           final atencao = produtos.where((p) => p.statusEstoque == 'atencao').toList();
@@ -166,7 +162,6 @@ class HomeScreen extends StatelessWidget {
                 letterSpacing: 0.4)),
       );
 }
-
 class _StatCard extends StatelessWidget {
   final String label, valor;
   final Color? cor;
@@ -180,15 +175,18 @@ class _StatCard extends StatelessWidget {
             color: Colors.grey.shade100,
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-            const SizedBox(height: 4),
-            Text(valor,
-                style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: cor ?? Colors.black87)),
-          ]),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              const SizedBox(height: 4),
+              Text(valor,
+                  style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: cor ?? Colors.black87)),
+            ],
+          ),
         ),
       );
 }
@@ -212,24 +210,38 @@ class _ProdutoHomeCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Row(children: [
-          FotoOuEmoji(fotoPath: produto.fotoPath, icone: produto.categoriaIcone ?? '📦'),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(produto.nome, style: const TextStyle(fontWeight: FontWeight.w600)),
-              Text(
-                'estoque: ${formatarQtd(produto.estoqueAtual ?? 0, produto.unidade)}'
-                ' · meta: ${formatarQtd(produto.consumoMensal, produto.unidade)}/mês',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        child: Row(
+          children: [
+            FotoOuEmoji(fotoPath: produto.fotoPath, icone: produto.categoriaIcone ?? '📦'),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(produto.nome, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(
+                    'estoque: ${formatarQtd(produto.estoqueAtual ?? 0, produto.unidade)}'
+                    ' · meta: ${formatarQtd(produto.consumoMensal, produto.unidade)}/mês',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 4),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: LinearProgressIndicator(
+                      value: pct,
+                      backgroundColor: Colors.grey.shade200,
+                      valueColor: AlwaysStoppedAnimation(corBarra),
+                      minHeight: 4,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 4),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(2),
-                child: LinearProgressIndicator(
-                  value: pct,
-                  backgroundColor: Colors.grey.shade200,
-                  valueColor: AlwaysStoppedAnimation(corBarra),
-                  minHeight: 4,
-                ),
-              ),
+            ),
+            const SizedBox(width: 8),
+            StatusBadge(produto.statusEstoque),
+          ],
+        ),
+      ),
+    );
+  }
+}

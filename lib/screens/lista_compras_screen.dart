@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../db/database_helper.dart';
+import '../database/database_helper.dart';
 import '../models/lista_item.dart';
 
 class ListaComprasScreen extends StatefulWidget {
@@ -9,14 +9,12 @@ class ListaComprasScreen extends StatefulWidget {
   @override
   State<ListaComprasScreen> createState() => _ListaComprasScreenState();
 }
-
 class _ListaComprasScreenState extends State<ListaComprasScreen> {
   late Future<List<ListaItem>> _futureItens;
 
   @override
   void initState() {
     super.initState();
-    // Cacheia a consulta: roda só uma vez
     _futureItens = DatabaseHelper.instance.getItensDaLista(widget.listaId);
   }
 
@@ -25,7 +23,6 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
       _futureItens = DatabaseHelper.instance.getItensDaLista(widget.listaId);
     });
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -39,6 +36,7 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
           if (snapshot.hasError) {
             return Center(child: Text("Erro: ${snapshot.error}"));
           }
+
           final itens = snapshot.data ?? [];
           if (itens.isEmpty) {
             return const Center(child: Text("Nenhum item na lista"));
@@ -53,7 +51,7 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
                 value: item.marcado,
                 onChanged: (val) async {
                   await DatabaseHelper.instance.toggleMarcado(item.id!, val ?? false);
-                  _atualizarLista(); // Atualiza só quando muda algo
+                  _atualizarLista();
                 },
               );
             },
