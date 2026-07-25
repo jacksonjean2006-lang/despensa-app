@@ -286,7 +286,11 @@ class DatabaseHelper {
                ORDER BY atualizado_em DESC
                LIMIT 1
              ), 0)) > 0
-    ''');
+        AND p.id NOT IN (
+          SELECT produto_id FROM lista_itens
+          WHERE lista_id = ? AND produto_id IS NOT NULL
+        )
+    ''', [listaId]);
     for (final row in rows) {
       final qtd = (row['consumo_mensal'] as num).toDouble() -
           (row['estoque_atual'] as num).toDouble();

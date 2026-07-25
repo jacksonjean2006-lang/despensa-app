@@ -55,10 +55,12 @@ class _LevantamentoScreenState extends State<LevantamentoScreen> {
     if (lista == null) {
       final mes = _mesAtual();
       listaId = await DatabaseHelper.instance.criarLista('Compras de $mes');
-      await DatabaseHelper.instance.gerarListaAutomatica(listaId);
     } else {
       listaId = lista['id'] as int;
     }
+    // Roda sempre, tanto pra lista nova quanto pra existente - só adiciona os
+    // produtos que ainda não estão nela (evita duplicar os já presentes).
+    await DatabaseHelper.instance.gerarListaAutomatica(listaId);
     setState(() => _salvando = false);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
