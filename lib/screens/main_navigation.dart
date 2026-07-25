@@ -16,25 +16,33 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _indiceAtual = 0;
+  // Um contador por aba: ao incrementar, muda a Key do widget e força o
+  // Flutter a recriá-lo do zero (rodando initState/_carregar de novo).
+  // Sem isso, as abas ficavam "congeladas" com os dados de quando o app abriu.
+  final List<int> _refreshKeys = [0, 0, 0, 0, 0];
 
-  final _telas = const [
-    HomeScreen(),
-    ProdutosScreen(),
-    LevantamentoScreen(),
-    ListaComprasScreen(),
-    HistoricoScreen(),
+  List<Widget> get _telas => [
+    HomeScreen(key: ValueKey('home_${_refreshKeys[0]}')),
+    ProdutosScreen(key: ValueKey('produtos_${_refreshKeys[1]}')),
+    LevantamentoScreen(key: ValueKey('estoque_${_refreshKeys[2]}')),
+    ListaComprasScreen(key: ValueKey('lista_${_refreshKeys[3]}')),
+    HistoricoScreen(key: ValueKey('historico_${_refreshKeys[4]}')),
   ];
+
+  void _selecionarAba(int i) {
+    setState(() {
+      _refreshKeys[i]++;
+      _indiceAtual = i;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _indiceAtual,
-        children: _telas,
-      ),
+      body: _telas[_indiceAtual],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _indiceAtual,
-        onDestinationSelected: (i) => setState(() => _indiceAtual = i),
+        onDestinationSelected: _selecionarAba,
         backgroundColor: Colors.white,
         indicatorColor: AppTheme.primary.withOpacity(0.12),
         destinations: const [

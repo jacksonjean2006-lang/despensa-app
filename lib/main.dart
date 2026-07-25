@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'screens/main_navigation.dart';
+import 'theme.dart';
 
 void main() {
   runApp(const MyApp());
@@ -12,7 +13,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Minha Despensa',
-      theme: ThemeData(primarySwatch: Colors.lightBlue),
+      theme: AppTheme.theme,
       home: const MainNavigation(),
     );
   }
