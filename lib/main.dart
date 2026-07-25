@@ -18,11 +18,3 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-ListaComprasScreen(),
-// Exemplo de navegação para abrir a lista com id 1
-Navigator.push(
-  context,
-  MaterialPageRoute(
-    builder: (_) => const ListaComprasScreen(listaId: 1),
-  ),
-);
