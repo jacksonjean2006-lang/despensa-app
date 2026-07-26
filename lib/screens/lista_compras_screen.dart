@@ -7,7 +7,8 @@ import '../theme.dart';
 import '../widgets/common.dart';
 
 class ListaComprasScreen extends StatefulWidget {
-  const ListaComprasScreen({super.key});
+  final int? listaId;
+  const ListaComprasScreen({super.key, this.listaId});
   @override
   State<ListaComprasScreen> createState() => _ListaComprasScreenState();
 }
@@ -15,8 +16,11 @@ class ListaComprasScreen extends StatefulWidget {
 class _ListaComprasScreenState extends State<ListaComprasScreen> {
   int? _listaId;
   String _listaDesc = '';
+  String? _finalizadoEm;
   List<ListaItem> _itens = [];
   bool _carregando = true;
+
+  bool get _readOnly => _finalizadoEm != null;
 
   // Guarda preços e qtds editados em memória (produtoId -> dados)
   final Map<int, _PrecoEditado> _precosEditados = {};
@@ -29,11 +33,14 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
 
   Future<void> _carregar() async {
     setState(() => _carregando = true);
-    final lista = await DatabaseHelper.instance.getListaAberta();
+    final lista = widget.listaId != null
+        ? await DatabaseHelper.instance.getListaPorId(widget.listaId!)
+        : await DatabaseHelper.instance.getListaAberta();
     if (lista != null) {
-      _listaId   = lista['id'] as int;
-      _listaDesc = lista['descricao'] as String;
-      _itens     = await DatabaseHelper.instance.getItensDaLista(_listaId!);
+      _listaId      = lista['id'] as int;
+      _listaDesc    = lista['descricao'] as String;
+      _finalizadoEm = lista['finalizado_em'] as String?;
+      _itens        = await DatabaseHelper.instance.getItensDaLista(_listaId!);
     }
     setState(() => _carregando = false);
   }
@@ -60,13 +67,41 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
       }).length;
 
   Future<void> _toggleMarcado(ListaItem item) async {
+    if (_readOnly) return;
     await DatabaseHelper.instance.toggleMarcado(item.id!, !item.marcado);
     setState(() => item.marcado = !item.marcado);
   }
 
   Future<void> _removerItem(ListaItem item) async {
+    if (_readOnly) return;
     await DatabaseHelper.instance.deletarItem(item.id!);
     setState(() => _itens.remove(item));
+  }
+
+  Future<void> _renomear() async {
+    final ctrl = TextEditingController(text: _listaDesc);
+    final novo = await showDialog<String>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Renomear lista'),
+        content: TextField(controller: ctrl, autofocus: true),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+    if (novo != null && novo.isNotEmpty && _listaId != null) {
+      await DatabaseHelper.instance.renomearLista(_listaId!, novo);
+      setState(() => _listaDesc = novo);
+    }
   }
 
   Future<void> _adicionarAvulso() async {
@@ -170,7 +205,7 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
                 style: TextStyle(fontSize: 16, color: Colors.grey)),
             const SizedBox(height: 8),
             const Text(
-              'Vá em Estoque e faça o levantamento\npara gerar sua lista automaticamente.',
+              'Vá em Início e toque em "Adicionar Lista de\nCompras" pra começar.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey),
             ),
@@ -183,10 +218,20 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
       appBar: AppBar(
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(_listaDesc, style: const TextStyle(fontSize: 16)),
-          Text('${_marcados}/${_itens.length} marcados',
-              style: const TextStyle(fontSize: 11, color: Colors.white70)),
+          Text(
+            _readOnly
+                ? 'Finalizada — ${_itens.where((i) => i.marcado).length} itens comprados'
+                : '${_marcados}/${_itens.length} marcados',
+            style: const TextStyle(fontSize: 11, color: Colors.white70),
+          ),
         ]),
         actions: [
+          if (!_readOnly)
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: _renomear,
+              tooltip: 'Renomear lista',
+            ),
           IconButton(
             icon: const Icon(Icons.share_outlined),
             onPressed: _compartilhar,
@@ -240,6 +285,7 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
                     return _ItemLista(
                       item:          item,
                       precoEditado:  editado,
+                      readOnly:      _readOnly,
                       onToggle:      () => _toggleMarcado(item),
                       onRemover:     () => _removerItem(item),
                       onRegistrarPreco: () => _registrarPreco(item),
@@ -248,8 +294,9 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
                 ),
         ),
 
-        // Botões rodapé
-        SafeArea(
+        // Botões rodapé (só quando a lista ainda pode ser editada)
+        if (!_readOnly)
+          SafeArea(
           top: false,
           child: Container(
           decoration: BoxDecoration(
@@ -320,6 +367,7 @@ class _PrecoEditado {
 class _ItemLista extends StatelessWidget {
   final ListaItem item;
   final _PrecoEditado? precoEditado;
+  final bool readOnly;
   final VoidCallback onToggle;
   final VoidCallback onRemover;
   final VoidCallback onRegistrarPreco;
@@ -327,6 +375,7 @@ class _ItemLista extends StatelessWidget {
   const _ItemLista({
     required this.item,
     required this.precoEditado,
+    this.readOnly = false,
     required this.onToggle,
     required this.onRemover,
     required this.onRegistrarPreco,
@@ -342,7 +391,7 @@ class _ItemLista extends StatelessWidget {
 
     return Dismissible(
       key: Key('item_${item.id}'),
-      direction: DismissDirection.endToStart,
+      direction: readOnly ? DismissDirection.none : DismissDirection.endToStart,
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 16),
@@ -451,7 +500,7 @@ class _ItemLista extends StatelessWidget {
                   size: 20,
                   color: temPreco ? AppTheme.primary : Colors.grey.shade400,
                 ),
-                onPressed: onRegistrarPreco,
+                onPressed: readOnly ? null : onRegistrarPreco,
                 tooltip: temPreco ? 'Editar preço' : 'Registrar preço',
               ),
             ]),

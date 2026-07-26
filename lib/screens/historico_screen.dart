@@ -5,6 +5,7 @@ import '../models/historico_compra.dart';
 import '../models/produto.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'lista_compras_screen.dart';
 
 // ─── Tela principal com abas ──────────────────────────────────────────────────
 class HistoricoScreen extends StatefulWidget {
@@ -20,7 +21,7 @@ class _HistoricoScreenState extends State<HistoricoScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this);
+    _tabs = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -36,6 +37,7 @@ class _HistoricoScreenState extends State<HistoricoScreen>
         title: const Text('Histórico de Compras'),
         bottom: TabBar(
           controller: _tabs,
+          isScrollable: true,
           indicatorColor: Colors.white,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
@@ -43,6 +45,7 @@ class _HistoricoScreenState extends State<HistoricoScreen>
             Tab(icon: Icon(Icons.grid_view_rounded, size: 18), text: 'Visão Geral'),
             Tab(icon: Icon(Icons.bar_chart_rounded, size: 18),  text: 'Gastos'),
             Tab(icon: Icon(Icons.search_rounded, size: 18),     text: 'Produtos'),
+            Tab(icon: Icon(Icons.list_alt_rounded, size: 18),   text: 'Listas'),
           ],
         ),
       ),
@@ -52,6 +55,7 @@ class _HistoricoScreenState extends State<HistoricoScreen>
           _AbaVisaoGeral(),
           _AbaGastos(),
           _AbaProdutos(),
+          _AbaListas(),
         ],
       ),
     );
@@ -1019,4 +1023,112 @@ class _StatDetalhe extends StatelessWidget {
       ]),
     ),
   );
+}
+
+// ─── ABA 4: Listas (todas as listas, abertas e finalizadas) ─────────────────
+class _AbaListas extends StatefulWidget {
+  const _AbaListas();
+  @override
+  State<_AbaListas> createState() => _AbaListasState();
+}
+
+class _AbaListasState extends State<_AbaListas>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  List<Map<String, dynamic>> _listas = [];
+  bool _carregando = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _carregar();
+  }
+
+  Future<void> _carregar() async {
+    setState(() => _carregando = true);
+    final data = await DatabaseHelper.instance.getListas();
+    setState(() { _listas = data; _carregando = false; });
+  }
+
+  Future<void> _excluir(Map<String, dynamic> lista) async {
+    final confirmou = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Excluir lista?'),
+        content: Text('A lista "${lista['descricao']}" será excluída permanentemente.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.danger, foregroundColor: Colors.white),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+    if (confirmou == true) {
+      await DatabaseHelper.instance.deletarLista(lista['id'] as int);
+      _carregar();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    if (_carregando) return const Center(child: CircularProgressIndicator());
+    if (_listas.isEmpty) {
+      return const Center(
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(Icons.list_alt_rounded, size: 56, color: Colors.grey),
+          SizedBox(height: 12),
+          Text('Nenhuma lista criada ainda', style: TextStyle(color: Colors.grey)),
+        ]),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _carregar,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: _listas.length,
+        itemBuilder: (_, i) {
+          final l = _listas[i];
+          final aberta = l['finalizado_em'] == null;
+          return Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: Icon(
+                aberta ? Icons.pending_actions : Icons.check_circle_outline,
+                color: aberta ? AppTheme.warning : AppTheme.success,
+              ),
+              title: Text(l['descricao'] as String,
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(
+                aberta
+                    ? 'Em andamento · criada em ${formatarData(l['criado_em'] as String)}'
+                    : 'Finalizada em ${formatarData(l['finalizado_em'] as String)}',
+                style: const TextStyle(fontSize: 12),
+              ),
+              trailing: aberta
+                  ? IconButton(
+                      icon: const Icon(Icons.delete_outline, color: AppTheme.danger),
+                      onPressed: () => _excluir(l),
+                    )
+                  : const Icon(Icons.chevron_right, color: Colors.grey),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ListaComprasScreen(listaId: l['id'] as int),
+                ),
+              ).then((_) => _carregar()),
+            ),
+          );
+        },
+      ),
+    );
+  }
 }

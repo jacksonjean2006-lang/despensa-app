@@ -208,6 +208,14 @@ class DatabaseHelper {
   }
 
   // ─── LISTAS ────────────────────────────────────────────────
+  // Nome sugerido automaticamente ao criar uma lista (dia, mês e ano)
+  static String nomeAutomatico() {
+    final agora = DateTime.now();
+    const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho',
+                   'Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    return 'Lista de ${agora.day} de ${meses[agora.month - 1]} de ${agora.year}';
+  }
+
   Future<int> criarLista(String descricao) async {
     final d = await db;
     return d.insert('listas', {
@@ -233,6 +241,31 @@ class DatabaseHelper {
         orderBy: 'criado_em DESC',
         limit: 1);
     return rows.isEmpty ? null : rows.first;
+  }
+
+  // Todas as listas (abertas e finalizadas), pra tela de Histórico
+  Future<List<Map<String, dynamic>>> getListas() async {
+    final d = await db;
+    return d.query('listas', orderBy: 'criado_em DESC');
+  }
+
+  Future<Map<String, dynamic>?> getListaPorId(int id) async {
+    final d = await db;
+    final rows = await d.query('listas', where: 'id = ?', whereArgs: [id], limit: 1);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  Future<void> renomearLista(int listaId, String novoNome) async {
+    final d = await db;
+    await d.update('listas', {'descricao': novoNome},
+        where: 'id = ?', whereArgs: [listaId]);
+  }
+
+  // Só deve ser chamado pra listas ainda abertas (garantido na tela)
+  Future<void> deletarLista(int listaId) async {
+    final d = await db;
+    await d.delete('lista_itens', where: 'lista_id = ?', whereArgs: [listaId]);
+    await d.delete('listas', where: 'id = ?', whereArgs: [listaId]);
   }
 
   // ─── ITENS DA LISTA ────────────────────────────────────────

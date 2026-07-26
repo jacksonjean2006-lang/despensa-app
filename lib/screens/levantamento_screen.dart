@@ -53,8 +53,7 @@ class _LevantamentoScreenState extends State<LevantamentoScreen> {
     var lista = await DatabaseHelper.instance.getListaAberta();
     int listaId;
     if (lista == null) {
-      final mes = _mesAtual();
-      listaId = await DatabaseHelper.instance.criarLista('Compras de $mes');
+      listaId = await DatabaseHelper.instance.criarLista(DatabaseHelper.nomeAutomatico());
     } else {
       listaId = lista['id'] as int;
     }

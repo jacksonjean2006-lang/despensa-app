@@ -4,6 +4,9 @@ import '../models/produto.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'compra_avulsa_screen.dart';
+import 'levantamento_screen.dart';
+import 'selecionar_itens_screen.dart';
+import 'lista_compras_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -33,6 +36,55 @@ class _HomeScreenState extends State<HomeScreen> {
       _produtos.where((p) => p.statusEstoque == 'atencao').toList();
   List<Produto> get _ok =>
       _produtos.where((p) => p.statusEstoque == 'ok').toList();
+
+  Future<void> _abrirNovaLista() async {
+    final listaAberta = await DatabaseHelper.instance.getListaAberta();
+    if (listaAberta != null) {
+      if (!mounted) return;
+      Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const ListaComprasScreen()));
+      return;
+    }
+    if (!mounted) return;
+    final opcao = await showModalBottomSheet<String>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Como montar a lista?',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.fact_check_outlined, color: AppTheme.primary),
+            title: const Text('Gerar automático'),
+            subtitle: const Text('Baseado no levantamento de estoque',
+                style: TextStyle(fontSize: 12)),
+            onTap: () => Navigator.pop(context, 'auto'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.checklist, color: AppTheme.primary),
+            title: const Text('Selecionar manualmente'),
+            subtitle: const Text('Escolher os produtos direto da lista',
+                style: TextStyle(fontSize: 12)),
+            onTap: () => Navigator.pop(context, 'manual'),
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (!mounted) return;
+    if (opcao == 'auto') {
+      Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const LevantamentoScreen()));
+    } else if (opcao == 'manual') {
+      Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const SelecionarItensScreen()));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -93,6 +145,25 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                   if (alterou == true) _carregar();
                 },
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // Botão adicionar lista de compras
+            Card(
+              color: AppTheme.success.withOpacity(0.06),
+              child: ListTile(
+                leading: const Icon(Icons.playlist_add, color: AppTheme.success),
+                title: const Text('Adicionar Lista de Compras',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.success)),
+                subtitle: const Text(
+                    'Gere automático ou monte manualmente',
+                    style: TextStyle(fontSize: 12)),
+                trailing: const Icon(Icons.arrow_forward_ios,
+                    size: 14, color: AppTheme.success),
+                onTap: _abrirNovaLista,
               ),
             ),
             const SizedBox(height: 8),
