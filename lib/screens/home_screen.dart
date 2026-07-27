@@ -39,35 +39,40 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _abrirNovaLista() async {
     final listaAberta = await DatabaseHelper.instance.getListaAberta();
-    if (listaAberta != null) {
-      if (!mounted) return;
-      Navigator.push(context,
-          MaterialPageRoute(builder: (_) => const ListaComprasScreen()));
-      return;
-    }
     if (!mounted) return;
+
     final opcao = await showModalBottomSheet<String>(
       context: context,
       builder: (_) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text('Como montar a lista?',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+              child: Text(
+                listaAberta != null ? 'Você já tem uma lista em aberto' : 'Como montar a lista?',
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+              ),
             ),
           ),
+          if (listaAberta != null)
+            ListTile(
+              leading: const Icon(Icons.shopping_cart_outlined, color: AppTheme.success),
+              title: const Text('Ver lista atual'),
+              subtitle: Text(listaAberta['descricao'] as String,
+                  style: const TextStyle(fontSize: 12)),
+              onTap: () => Navigator.pop(context, 'ver'),
+            ),
           ListTile(
             leading: const Icon(Icons.fact_check_outlined, color: AppTheme.primary),
-            title: const Text('Gerar automático'),
+            title: Text(listaAberta != null ? 'Adicionar mais (automático)' : 'Gerar automático'),
             subtitle: const Text('Baseado no levantamento de estoque',
                 style: TextStyle(fontSize: 12)),
             onTap: () => Navigator.pop(context, 'auto'),
           ),
           ListTile(
             leading: const Icon(Icons.checklist, color: AppTheme.primary),
-            title: const Text('Selecionar manualmente'),
+            title: Text(listaAberta != null ? 'Adicionar mais (manual)' : 'Selecionar manualmente'),
             subtitle: const Text('Escolher os produtos direto da lista',
                 style: TextStyle(fontSize: 12)),
             onTap: () => Navigator.pop(context, 'manual'),
@@ -77,7 +82,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     if (!mounted) return;
-    if (opcao == 'auto') {
+    if (opcao == 'ver') {
+      Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const ListaComprasScreen()));
+    } else if (opcao == 'auto') {
       Navigator.push(context,
           MaterialPageRoute(builder: (_) => const LevantamentoScreen()));
     } else if (opcao == 'manual') {
