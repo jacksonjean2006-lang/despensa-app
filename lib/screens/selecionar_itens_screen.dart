@@ -42,37 +42,73 @@ class _SelecionarItensScreenState extends State<SelecionarItensScreen> {
       .toList();
 
   Future<void> _confirmar() async {
-    if (_selecionados.isEmpty) return;
+    if (_selecionados.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Marque pelo menos um produto antes de confirmar')),
+      );
+      return;
+    }
     setState(() => _salvando = true);
 
-    var lista = await DatabaseHelper.instance.getListaAberta();
-    int listaId;
-    if (lista == null) {
-      listaId =
-          await DatabaseHelper.instance.criarLista(DatabaseHelper.nomeAutomatico());
-    } else {
-      listaId = lista['id'] as int;
-    }
+    try {
+      var lista = await DatabaseHelper.instance.getListaAberta();
+      int listaId;
+      if (lista == null) {
+        listaId = await DatabaseHelper.instance
+            .criarLista(DatabaseHelper.nomeAutomatico());
+      } else {
+        listaId = lista['id'] as int;
+      }
 
-    final jaNaLista = (await DatabaseHelper.instance.getItensDaLista(listaId))
-        .map((i) => i.produtoId)
-        .toSet();
+      final jaNaLista = (await DatabaseHelper.instance.getItensDaLista(listaId))
+          .map((i) => i.produtoId)
+          .toSet();
 
-    for (final id in _selecionados) {
-      if (jaNaLista.contains(id)) continue;
-      final produto = _produtos.firstWhere((p) => p.id == id);
-      await DatabaseHelper.instance.adicionarItem(ListaItem(
-        listaId: listaId,
-        produtoId: id,
-        quantidade: produto.consumoMensal > 0 ? produto.consumoMensal : 1,
-        unidade: produto.unidade,
-      ));
-    }
+      int adicionados = 0;
+      for (final id in _selecionados) {
+        if (jaNaLista.contains(id)) continue;
+        final produto = _produtos.firstWhere((p) => p.id == id);
+        await DatabaseHelper.instance.adicionarItem(ListaItem(
+          listaId: listaId,
+          produtoId: id,
+          quantidade: produto.consumoMensal > 0 ? produto.consumoMensal : 1,
+          unidade: produto.unidade,
+        ));
+        adicionados++;
+      }
 
-    if (mounted) {
+      if (!mounted) return;
+
+      if (adicionados == 0) {
+        setState(() => _salvando = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_selecionados.length == jaNaLista.length
+              ? 'Esses itens já estavam na lista'
+              : 'Nenhum item foi adicionado (verifique se já estavam na lista)'),
+        ));
+        return;
+      }
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const ListaComprasScreen()),
+      );
+    } catch (e, st) {
+      debugPrint('Erro ao adicionar itens à lista: $e\n$st');
+      if (!mounted) return;
+      setState(() => _salvando = false);
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Erro ao salvar'),
+          content: SingleChildScrollView(child: Text(e.toString())),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
       );
     }
   }
