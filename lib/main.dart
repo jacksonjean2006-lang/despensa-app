@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'screens/main_navigation.dart';
+import 'splash_screen.dart';
 import 'theme.dart';
 
 void main() {
@@ -14,7 +14,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Minha Despensa',
       theme: AppTheme.theme,
-      home: const MainNavigation(),
+      home: const SplashScreen(),
     );
   }
 }
