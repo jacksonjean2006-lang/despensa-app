@@ -3,6 +3,7 @@ import '../database/database_helper.dart';
 import '../models/produto.dart';
 import '../models/local_compra.dart';
 import '../models/historico_compra.dart';
+import '../models/lista_item.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
@@ -146,8 +147,26 @@ class _CompraAvulsaScreenState extends State<CompraAvulsaScreen> {
     setState(() => _salvando = true);
     try {
       final dataStr = _dataCompra.toIso8601String();
+
+      // Cria uma lista já finalizada representando essa compra avulsa, pra
+      // ela aparecer também no Histórico > Listas (com os itens marcados
+      // como comprados desde já).
+      final nomeLista = 'Compra Avulsa'
+          '${_localSelecionado != null ? " - ${_localSelecionado!.nome}" : ""}'
+          ' - ${formatarData(dataStr)}';
+      final listaId = await DatabaseHelper.instance.criarLista(nomeLista);
+
       for (final item in _itens) {
+        await DatabaseHelper.instance.adicionarItem(ListaItem(
+          listaId: listaId,
+          produtoId: item.produtoId,
+          nomeAvulso: item.produtoId == null ? item.nome : null,
+          quantidade: item.quantidade,
+          unidade: item.unidade,
+          marcado: true,
+        ));
         await DatabaseHelper.instance.registrarCompra(HistoricoCompra(
+          listaId:          listaId,
           produtoId:        item.produtoId,
           nomeAvulso:       item.produtoId == null ? item.nome : null,
           localId:          _localSelecionado?.id,
@@ -157,6 +176,7 @@ class _CompraAvulsaScreenState extends State<CompraAvulsaScreen> {
           data:             dataStr,
         ));
       }
+      await DatabaseHelper.instance.finalizarLista(listaId);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

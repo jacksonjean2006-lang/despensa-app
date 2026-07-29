@@ -243,10 +243,16 @@ class DatabaseHelper {
     return rows.isEmpty ? null : rows.first;
   }
 
-  // Todas as listas (abertas e finalizadas), pra tela de Histórico
+  // Todas as listas (abertas e finalizadas), pra tela de Histórico - já com
+  // o total gasto (soma do histórico de compras vinculado à lista)
   Future<List<Map<String, dynamic>>> getListas() async {
     final d = await db;
-    return d.query('listas', orderBy: 'criado_em DESC');
+    return d.rawQuery('''
+      SELECT l.*,
+             (SELECT SUM(preco_total) FROM historico_compras WHERE lista_id = l.id) AS total
+      FROM listas l
+      ORDER BY l.criado_em DESC
+    ''');
   }
 
   Future<Map<String, dynamic>?> getListaPorId(int id) async {
@@ -409,6 +415,22 @@ class DatabaseHelper {
   }
 
   // ─── TODOS OS ÚLTIMOS PREÇOS (cadastrados + avulsos) ──────────────────────────
+  Future<List<Map<String, dynamic>>> getResumoMensalPorLocal() async {
+    final d = await db;
+    final rows = await d.rawQuery('''
+      SELECT
+        strftime('%Y-%m', h.data) AS mes,
+        COALESCE(l.nome, 'Sem mercado informado') AS mercado,
+        SUM(h.preco_total) AS total_gasto
+      FROM historico_compras h
+      LEFT JOIN locais_compra l ON l.id = h.local_id
+      WHERE h.preco_total IS NOT NULL
+      GROUP BY mes, mercado
+      ORDER BY mes DESC, total_gasto DESC
+    ''');
+    return rows.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
   Future<List<Map<String, dynamic>>> getUltimosPrecos() async {
     final d = await db;
     // Itens cadastrados — última compra de cada produto
@@ -509,6 +531,19 @@ class DatabaseHelper {
   }
 
   // ─── HISTÓRICO PARA GRÁFICO ─────────────────────────────────
+  // ─── MANUTENÇÃO ────────────────────────────────────────────
+  // Limpa toda a movimentação (estoque, listas, itens de lista e histórico
+  // de compras/preços), mas MANTÉM o cadastro: produtos, categorias e locais
+  // de compra. Útil pra zerar o "uso" do app sem perder o que já foi cadastrado
+  // (diferente de desinstalar, que apaga tudo).
+  Future<void> limparMovimentacao() async {
+    final d = await db;
+    await d.delete('lista_itens');
+    await d.delete('listas');
+    await d.delete('historico_compras');
+    await d.delete('estoque');
+  }
+
   Future<List<HistoricoCompra>> getHistoricoProdutoGrafico(int produtoId) async {
     final d = await db;
     final rows = await d.rawQuery('''

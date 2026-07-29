@@ -30,11 +30,55 @@ class _HistoricoScreenState extends State<HistoricoScreen>
     super.dispose();
   }
 
+  Future<void> _confirmarLimpeza() async {
+    final confirmou = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Limpar movimentação?'),
+        content: const Text(
+          'Isso apaga TODO o estoque, listas e histórico de compras/preços.\n\n'
+          'Seus produtos, categorias e locais de compra cadastrados NÃO serão apagados.\n\n'
+          'Essa ação não pode ser desfeita.',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.danger, foregroundColor: Colors.white),
+            child: const Text('Limpar tudo'),
+          ),
+        ],
+      ),
+    );
+    if (confirmou == true) {
+      await DatabaseHelper.instance.limparMovimentacao();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(
+              'Movimentação limpa. Produtos e categorias mantidos.')),
+        );
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const HistoricoScreen()),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Histórico de Compras'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_sweep_outlined),
+            tooltip: 'Limpar movimentação',
+            onPressed: _confirmarLimpeza,
+          ),
+        ],
         bottom: TabBar(
           controller: _tabs,
           isScrollable: true,
@@ -179,17 +223,62 @@ class _AbaVisaoGeralState extends State<_AbaVisaoGeral>
   );
 
   void _abrirDetalhe(Map<String, dynamic> item) {
+    final produtoId = item['produto_id'] as int?;
+    if (produtoId == null) {
+      _mostrarAvulsoSemCadastro(item);
+      return;
+    }
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => _DetalheHistoricoScreen(
-          produtoId:   item['produto_id'] as int,
+          produtoId:   produtoId,
           produtoNome: item['produto_nome'] as String,
           unidade:     item['unidade'] as String? ?? 'un',
           icone:       item['categoria_icone'] as String? ?? '📦',
         ),
       ),
     );
+  }
+
+  Future<void> _mostrarAvulsoSemCadastro(Map<String, dynamic> item) async {
+    final incluir = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Item avulso'),
+        content: const Text(
+          'Não há comparativos de preço por esse item não ser um produto cadastrado.\n\n'
+          'Quer incluí-lo no cadastro de produtos agora?',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Fechar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
+            child: const Text('Incluir no cadastro'),
+          ),
+        ],
+      ),
+    );
+    if (incluir == true) {
+      await DatabaseHelper.instance.salvarProduto(Produto(
+        nome: item['produto_nome'] as String,
+        unidade: item['unidade'] as String? ?? 'un',
+        consumoMensal: 0,
+        estoqueMinimo: 0,
+        ativo: true,
+        criadoEm: DateTime.now().toIso8601String(),
+      ));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(
+              'Produto cadastrado! Ajuste os detalhes na aba Produtos.')),
+        );
+      }
+    }
   }
 }
 
@@ -283,6 +372,7 @@ class _AbaGastosState extends State<_AbaGastos>
   bool get wantKeepAlive => true;
 
   List<Map<String, dynamic>> _resumo = [];
+  List<Map<String, dynamic>> _resumoPorLocal = [];
   bool _carregando = true;
 
   @override
@@ -294,7 +384,8 @@ class _AbaGastosState extends State<_AbaGastos>
   Future<void> _carregar() async {
     setState(() => _carregando = true);
     final data = await DatabaseHelper.instance.getResumoMensal();
-    setState(() { _resumo = data; _carregando = false; });
+    final porLocal = await DatabaseHelper.instance.getResumoMensalPorLocal();
+    setState(() { _resumo = data; _resumoPorLocal = porLocal; _carregando = false; });
   }
 
   String _nomeMes(String anoMes) {
@@ -451,28 +542,56 @@ class _AbaGastosState extends State<_AbaGastos>
                   color: Colors.grey, letterSpacing: 0.5)),
           const SizedBox(height: 8),
           ..._resumo.map((m) {
-            final mes       = _nomeMes(m['mes'] as String);
+            final mesChave  = m['mes'] as String;
+            final mes       = _nomeMes(mesChave);
             final gasto     = (m['total_gasto'] as num?)?.toDouble() ?? 0;
             final nProdutos = m['num_produtos'] as int? ?? 0;
+            final porMercado = _resumoPorLocal
+                .where((r) => r['mes'] == mesChave)
+                .toList();
             return Card(
               margin: const EdgeInsets.only(bottom: 6),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                child: Row(children: [
-                  Expanded(child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    Text(mes, style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 15)),
-                    Text('$nProdutos produto${nProdutos != 1 ? 's' : ''}',
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.grey.shade500)),
-                  ])),
-                  Text(formatarMoeda(gasto),
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: AppTheme.primary)),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      Text(mes, style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 15)),
+                      Text('$nProdutos produto${nProdutos != 1 ? 's' : ''}',
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey.shade500)),
+                    ])),
+                    Text(formatarMoeda(gasto),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: AppTheme.primary)),
+                  ]),
+                  if (porMercado.isNotEmpty) ...[
+                    const Divider(height: 16),
+                    ...porMercado.map((r) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                        Expanded(
+                          child: Text(r['mercado'] as String,
+                              style: TextStyle(
+                                  fontSize: 13, color: Colors.grey.shade700),
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                        Text(
+                          formatarMoeda((r['total_gasto'] as num?)?.toDouble() ?? 0),
+                          style: TextStyle(
+                              fontSize: 13, color: Colors.grey.shade700,
+                              fontWeight: FontWeight.w500),
+                        ),
+                      ]),
+                    )),
+                  ],
                 ]),
               ),
             );
@@ -1110,7 +1229,8 @@ class _AbaListasState extends State<_AbaListas>
               subtitle: Text(
                 aberta
                     ? 'Em andamento · criada em ${formatarData(l['criado_em'] as String)}'
-                    : 'Finalizada em ${formatarData(l['finalizado_em'] as String)}',
+                    : 'Finalizada em ${formatarData(l['finalizado_em'] as String)}'
+                      '${(l['total'] as num?) != null ? ' · ${formatarMoeda((l['total'] as num).toDouble())}' : ''}',
                 style: const TextStyle(fontSize: 12),
               ),
               trailing: aberta
