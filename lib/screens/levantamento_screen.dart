@@ -3,6 +3,7 @@ import '../database/database_helper.dart';
 import '../models/produto.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'lista_compras_screen.dart';
 
 class LevantamentoScreen extends StatefulWidget {
   const LevantamentoScreen({super.key});
@@ -67,6 +68,10 @@ class _LevantamentoScreenState extends State<LevantamentoScreen> {
           content: Text('Lista gerada com sucesso!'),
           backgroundColor: AppTheme.success,
         ),
+      );
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const ListaComprasScreen()),
       );
     }
   }

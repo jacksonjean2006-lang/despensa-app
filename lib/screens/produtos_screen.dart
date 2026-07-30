@@ -50,6 +50,16 @@ class _ProdutosScreenState extends State<ProdutosScreen> {
               _carregar();
             },
           ),
+          // Botão gerenciar unidades
+          IconButton(
+            icon: const Icon(Icons.straighten),
+            tooltip: 'Unidades',
+            onPressed: () async {
+              await Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const UnidadesScreen()));
+              _carregar();
+            },
+          ),
           // Botão novo produto
           IconButton(
             icon: const Icon(Icons.add),
@@ -164,6 +174,79 @@ class _ProdutoCard extends StatelessWidget {
   }
 }
 
+// ─── Seleção de ícone (grade de emojis comuns + entrada manual) ──────────────────
+const _iconesDisponiveis = [
+  '🍎', '🍌', '🍊', '🍇', '🥦', '🥕', '🥔', '🥑', '🥬', '🍄',
+  '🍅', '🥩', '🍗', '🥚', '🧀', '🥛', '🍞', '🥖', '🧈', '🍚',
+  '🍫', '🍬', '☕', '🍵', '🥤', '🍷', '🍺', '🧃', '🧻', '🧴',
+  '🧼', '🧹', '🧽', '🪥', '🧊', '🧂', '🌶️', '🥫', '🍕', '🌭',
+  '🍿', '🐾', '💊', '🩹', '🔋', '💡', '🚗', '📦', '🛍️',
+];
+
+Future<String?> _escolherIcone(BuildContext context, String atual) async {
+  final manualCtrl = TextEditingController(text: atual);
+  return showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    builder: (_) => DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (_, scrollCtrl) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(children: [
+          const Text('Escolher ícone',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: manualCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Ou digite/cole um emoji'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, manualCtrl.text.trim()),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white),
+              child: const Text('Usar'),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          Expanded(
+            child: GridView.builder(
+              controller: scrollCtrl,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 7),
+              itemCount: _iconesDisponiveis.length,
+              itemBuilder: (_, i) {
+                final icone = _iconesDisponiveis[i];
+                return InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => Navigator.pop(context, icone),
+                  child: Container(
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color: Colors.grey.shade100,
+                    ),
+                    margin: const EdgeInsets.all(3),
+                    child: Text(icone, style: const TextStyle(fontSize: 22)),
+                  ),
+                );
+              },
+            ),
+          ),
+        ]),
+      ),
+    ),
+  );
+}
+
 // ─── GERENCIAR CATEGORIAS ─────────────────────────────────────────────────────
 class CategoriasScreen extends StatefulWidget {
   final List<Categoria> cats;
@@ -188,89 +271,127 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
 
   Future<void> _novaCategoria() async {
     final nomeCtrl  = TextEditingController();
-    final iconeCtrl = TextEditingController(text: '📦');
+    String icone = '📦';
     await showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Nova categoria'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(
-            controller: iconeCtrl,
-            decoration: const InputDecoration(labelText: 'Emoji/ícone'),
-            autofocus: true,
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: nomeCtrl,
-            decoration: const InputDecoration(labelText: 'Nome *'),
-          ),
-        ]),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar')),
-          ElevatedButton(
-            onPressed: () async {
-              if (nomeCtrl.text.trim().isEmpty) return;
-              await DatabaseHelper.instance.salvarCategoria(Categoria(
-                nome:  nomeCtrl.text.trim(),
-                icone: iconeCtrl.text.trim().isEmpty
-                    ? '📦' : iconeCtrl.text.trim(),
-              ));
-              if (context.mounted) Navigator.pop(context);
-              _carregar();
-            },
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white),
-            child: const Text('Salvar'),
-          ),
-        ],
+      builder: (_) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Nova categoria'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            InkWell(
+              onTap: () async {
+                final novo = await _escolherIcone(context, icone);
+                if (novo != null && novo.isNotEmpty) {
+                  setDialogState(() => icone = novo);
+                }
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(children: [
+                  Text(icone, style: const TextStyle(fontSize: 32)),
+                  const SizedBox(height: 4),
+                  const Text('Toque para escolher o ícone',
+                      style: TextStyle(fontSize: 11, color: Colors.grey)),
+                ]),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nomeCtrl,
+              decoration: const InputDecoration(labelText: 'Nome *'),
+              autofocus: true,
+            ),
+          ]),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancelar')),
+            ElevatedButton(
+              onPressed: () async {
+                if (nomeCtrl.text.trim().isEmpty) return;
+                await DatabaseHelper.instance.salvarCategoria(Categoria(
+                  nome:  nomeCtrl.text.trim(),
+                  icone: icone,
+                ));
+                if (context.mounted) Navigator.pop(context);
+                _carregar();
+              },
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white),
+              child: const Text('Salvar'),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Future<void> _editarCategoria(Categoria cat) async {
     final nomeCtrl  = TextEditingController(text: cat.nome);
-    final iconeCtrl = TextEditingController(text: cat.icone ?? '📦');
+    String icone = cat.icone ?? '📦';
     await showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Editar categoria'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(
-            controller: iconeCtrl,
-            decoration: const InputDecoration(labelText: 'Emoji/ícone'),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: nomeCtrl,
-            decoration: const InputDecoration(labelText: 'Nome *'),
-            autofocus: true,
-          ),
-        ]),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar')),
-          ElevatedButton(
-            onPressed: () async {
-              if (nomeCtrl.text.trim().isEmpty) return;
-              await DatabaseHelper.instance.salvarCategoria(Categoria(
-                id:    cat.id,
-                nome:  nomeCtrl.text.trim(),
-                icone: iconeCtrl.text.trim().isEmpty
-                    ? '📦' : iconeCtrl.text.trim(),
-              ));
-              if (context.mounted) Navigator.pop(context);
-              _carregar();
-            },
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.white),
-            child: const Text('Salvar'),
-          ),
-        ],
+      builder: (_) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Editar categoria'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            InkWell(
+              onTap: () async {
+                final novo = await _escolherIcone(context, icone);
+                if (novo != null && novo.isNotEmpty) {
+                  setDialogState(() => icone = novo);
+                }
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(children: [
+                  Text(icone, style: const TextStyle(fontSize: 32)),
+                  const SizedBox(height: 4),
+                  const Text('Toque para escolher o ícone',
+                      style: TextStyle(fontSize: 11, color: Colors.grey)),
+                ]),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nomeCtrl,
+              decoration: const InputDecoration(labelText: 'Nome *'),
+              autofocus: true,
+            ),
+          ]),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancelar')),
+            ElevatedButton(
+              onPressed: () async {
+                if (nomeCtrl.text.trim().isEmpty) return;
+                await DatabaseHelper.instance.salvarCategoria(Categoria(
+                  id:    cat.id,
+                  nome:  nomeCtrl.text.trim(),
+                  icone: icone,
+                ));
+                if (context.mounted) Navigator.pop(context);
+                _carregar();
+              },
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white),
+              child: const Text('Salvar'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -321,6 +442,137 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
 }
 
 // ─── CADASTRO / EDIÇÃO DE PRODUTO ─────────────────────────────────────────────
+// ─── GERENCIAR UNIDADES ─────────────────────────────────────────────────────
+class UnidadesScreen extends StatefulWidget {
+  const UnidadesScreen({super.key});
+  @override
+  State<UnidadesScreen> createState() => _UnidadesScreenState();
+}
+
+class _UnidadesScreenState extends State<UnidadesScreen> {
+  List<Map<String, dynamic>> _unidades = [];
+  bool _carregando = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _carregar();
+  }
+
+  Future<void> _carregar() async {
+    setState(() => _carregando = true);
+    final u = await DatabaseHelper.instance.getUnidadesComId();
+    setState(() { _unidades = u; _carregando = false; });
+  }
+
+  Future<void> _novaUnidade() async {
+    final ctrl = TextEditingController();
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Nova unidade'),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(
+              labelText: 'Sigla *', hintText: 'ex: kg, un, cx, dz...'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () async {
+              final sigla = ctrl.text.trim();
+              if (sigla.isEmpty) return;
+              try {
+                await DatabaseHelper.instance.salvarUnidade(sigla);
+                if (context.mounted) Navigator.pop(context);
+                _carregar();
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('Essa unidade já existe')),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white),
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _excluirUnidade(Map<String, dynamic> u) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Excluir unidade?'),
+        content: Text('Remover "${u['sigla']}" do cadastro de unidades.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(foregroundColor: AppTheme.danger),
+              child: const Text('Excluir')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await DatabaseHelper.instance.deletarUnidade(u['id'] as int);
+      _carregar();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Unidades'),
+        actions: [
+          IconButton(icon: const Icon(Icons.add), onPressed: _novaUnidade),
+        ],
+      ),
+      body: _carregando
+          ? const Center(child: CircularProgressIndicator())
+          : _unidades.isEmpty
+              ? const Center(child: Text('Nenhuma unidade cadastrada'))
+              : ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: _unidades.length,
+                  itemBuilder: (_, i) {
+                    final u = _unidades[i];
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      child: ListTile(
+                        title: Text(u['sigla'] as String,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w500)),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline,
+                              color: AppTheme.danger),
+                          onPressed: () => _excluirUnidade(u),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _novaUnidade,
+        backgroundColor: AppTheme.primary,
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
+    );
+  }
+}
+
 class CadastroProdutoScreen extends StatefulWidget {
   final List<Categoria> cats;
   final Produto? produto;
@@ -342,10 +594,12 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
   bool _salvando = false;
 
   final _unidades = ['kg', 'g', 'L', 'ml', 'un', 'cx', 'pct'];
+  List<String> _unidadesDisponiveis = ['kg', 'g', 'L', 'ml', 'un', 'cx', 'pct'];
 
   @override
   void initState() {
     super.initState();
+    _carregarUnidades();
     final p = widget.produto;
     _nome    = TextEditingController(text: p?.nome ?? '');
     _marca   = TextEditingController(text: p?.marca ?? '');
@@ -359,6 +613,18 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
     _catId    = p?.categoriaId;
     _ativo    = p?.ativo ?? true;
     _fotoPath = p?.fotoPath;
+  }
+
+  Future<void> _carregarUnidades() async {
+    final u = await DatabaseHelper.instance.getUnidades();
+    if (mounted) {
+      setState(() {
+        // garante que a unidade atual do produto sempre aparece na lista,
+        // mesmo que tenha sido removida do cadastro de unidades depois
+        _unidadesDisponiveis = {..._unidade.isNotEmpty ? [_unidade] : [], ...u}
+            .toList();
+      });
+    }
   }
 
   @override
@@ -520,7 +786,7 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
                         value: _unidade,
                         decoration:
                             const InputDecoration(labelText: 'Unidade'),
-                        items: _unidades
+                        items: _unidadesDisponiveis
                             .map((u) => DropdownMenuItem(
                                 value: u, child: Text(u)))
                             .toList(),

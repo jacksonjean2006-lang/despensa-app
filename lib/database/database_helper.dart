@@ -21,7 +21,7 @@ class DatabaseHelper {
     final path = join(await getDatabasesPath(), 'despensa.db');
     return openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -35,6 +35,19 @@ class DatabaseHelper {
       if (!jaTem) {
         await db.execute(
             'ALTER TABLE historico_compras ADD COLUMN nome_avulso TEXT');
+      }
+    }
+    if (oldVersion < 3) {
+      final tabelas = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='unidades'");
+      if (tabelas.isEmpty) {
+        await db.execute('''
+          CREATE TABLE unidades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sigla TEXT NOT NULL UNIQUE
+          )
+        ''');
+        await _seedUnidades(db);
       }
     }
   }
@@ -111,7 +124,14 @@ class DatabaseHelper {
         data TEXT NOT NULL
       )
     ''');
+    await db.execute('''
+      CREATE TABLE unidades (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sigla TEXT NOT NULL UNIQUE
+      )
+    ''');
     await _seed(db);
+    await _seedUnidades(db);
   }
 
   Future<void> _seed(Database db) async {
@@ -127,6 +147,40 @@ class DatabaseHelper {
     for (final c in cats) {
       await db.insert('categorias', c);
     }
+  }
+
+  Future<void> _seedUnidades(Database db) async {
+    const unidades = ['kg', 'g', 'L', 'ml', 'un', 'cx', 'pct'];
+    for (final u in unidades) {
+      await db.insert('unidades', {'sigla': u});
+    }
+  }
+
+  // ─── UNIDADES ────────────────────────────────────────────
+  Future<List<String>> getUnidades() async {
+    final d = await db;
+    final rows = await d.query('unidades', orderBy: 'sigla');
+    if (rows.isEmpty) {
+      await _seedUnidades(d);
+      final novas = await d.query('unidades', orderBy: 'sigla');
+      return novas.map((r) => r['sigla'] as String).toList();
+    }
+    return rows.map((r) => r['sigla'] as String).toList();
+  }
+
+  Future<void> salvarUnidade(String sigla) async {
+    final d = await db;
+    await d.insert('unidades', {'sigla': sigla.trim()});
+  }
+
+  Future<void> deletarUnidade(int id) async {
+    final d = await db;
+    await d.delete('unidades', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<List<Map<String, dynamic>>> getUnidadesComId() async {
+    final d = await db;
+    return d.query('unidades', orderBy: 'sigla');
   }
 
   // ─── CATEGORIAS ────────────────────────────────────────────

@@ -554,7 +554,15 @@ class _DialogItemAvulsoState extends State<_DialogItemAvulso> {
   final _qtdCtrl   = TextEditingController(text: '1');
   final _precoCtrl = TextEditingController();
   String _unidade  = 'un';
-  final _unidades  = ['kg', 'g', 'L', 'ml', 'un', 'cx', 'pct'];
+  List<String> _unidades  = ['kg', 'g', 'L', 'ml', 'un', 'cx', 'pct'];
+
+  @override
+  void initState() {
+    super.initState();
+    DatabaseHelper.instance.getUnidades().then((u) {
+      if (mounted) setState(() => _unidades = u);
+    });
+  }
 
   double get _precoUnit {
     final total = double.tryParse(_precoCtrl.text) ?? 0;
