@@ -431,6 +431,29 @@ class DatabaseHelper {
     return rows.map((r) => Map<String, dynamic>.from(r)).toList();
   }
 
+  // Cadastra um produto a partir de um item avulso, e vincula retroativamente
+  // qualquer compra/lista_item avulso anterior com esse MESMO nome ao produto
+  // novo - assim o histórico de preços não se perde quando ele passa a ser
+  // um item cadastrado.
+  Future<int> incluirAvulsoNoCadastro(String nome, String unidade) async {
+    final d = await db;
+    final id = await d.insert('produtos', {
+      'nome': nome,
+      'unidade': unidade,
+      'consumo_mensal': 0,
+      'estoque_minimo': 0,
+      'categoria_id': null,
+      'marca': null,
+      'ativo': 1,
+      'criado_em': DateTime.now().toIso8601String(),
+    });
+    await d.update('historico_compras', {'produto_id': id, 'nome_avulso': null},
+        where: 'produto_id IS NULL AND nome_avulso = ?', whereArgs: [nome]);
+    await d.update('lista_itens', {'produto_id': id, 'nome_avulso': null},
+        where: 'produto_id IS NULL AND nome_avulso = ?', whereArgs: [nome]);
+    return id;
+  }
+
   Future<List<Map<String, dynamic>>> getUltimosPrecos() async {
     final d = await db;
     // Itens cadastrados — última compra de cada produto

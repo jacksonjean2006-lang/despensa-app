@@ -264,14 +264,10 @@ class _AbaVisaoGeralState extends State<_AbaVisaoGeral>
       ),
     );
     if (incluir == true) {
-      await DatabaseHelper.instance.salvarProduto(Produto(
-        nome: item['produto_nome'] as String,
-        unidade: item['unidade'] as String? ?? 'un',
-        consumoMensal: 0,
-        estoqueMinimo: 0,
-        ativo: true,
-        criadoEm: DateTime.now().toIso8601String(),
-      ));
+      await DatabaseHelper.instance.incluirAvulsoNoCadastro(
+        item['produto_nome'] as String,
+        item['unidade'] as String? ?? 'un',
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text(

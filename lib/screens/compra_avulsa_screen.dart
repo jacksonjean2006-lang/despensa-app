@@ -9,7 +9,7 @@ import '../widgets/common.dart';
 
 // ─── Modelo local de item da compra avulsa ────────────────────────────────────
 class _ItemAvulso {
-  final int? produtoId;
+  int? produtoId;
   final String nome;
   final String unidade;
   final String? categoriaIcone;
@@ -128,6 +128,7 @@ class _CompraAvulsaScreenState extends State<CompraAvulsaScreen> {
     );
     if (resultado != null) {
       setState(() {
+        item.produtoId     = resultado.produtoId;
         item.quantidade    = resultado.quantidade;
         item.precoTotal    = resultado.precoTotal;
         item.precoUnitario = resultado.precoUnitario;
@@ -650,16 +651,41 @@ class _DialogEditarItem extends StatefulWidget {
 class _DialogEditarItemState extends State<_DialogEditarItem> {
   late TextEditingController _qtdCtrl;
   late TextEditingController _precoCtrl;
+  late int? _produtoId;
+  bool _cadastrando = false;
 
   @override
   void initState() {
     super.initState();
+    _produtoId = widget.item.produtoId;
     _qtdCtrl   = TextEditingController(
         text: widget.item.quantidade.toString());
     _precoCtrl = TextEditingController(
         text: widget.item.precoTotal?.toString() ?? '');
     _qtdCtrl.addListener(() => setState(() {}));
     _precoCtrl.addListener(() => setState(() {}));
+  }
+
+  Future<void> _incluirNoCadastro() async {
+    setState(() => _cadastrando = true);
+    try {
+      final id = await DatabaseHelper.instance.incluirAvulsoNoCadastro(
+        widget.item.nome,
+        widget.item.unidade,
+      );
+      setState(() {
+        _produtoId = id;
+        _cadastrando = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(
+              'Produto cadastrado! Ajuste os detalhes na aba Produtos.')),
+        );
+      }
+    } catch (e) {
+      setState(() => _cadastrando = false);
+    }
   }
 
   double get _precoUnit {
@@ -698,6 +724,33 @@ class _DialogEditarItemState extends State<_DialogEditarItem> {
                   color: AppTheme.primary, fontWeight: FontWeight.w600),
             ),
           ),
+        if (_produtoId == null) ...[
+          const SizedBox(height: 14),
+          const Divider(height: 1),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: _cadastrando ? null : _incluirNoCadastro,
+            icon: _cadastrando
+                ? const SizedBox(
+                    width: 14, height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.playlist_add, size: 18),
+            label: Text(_cadastrando
+                ? 'Cadastrando...'
+                : 'Incluir no cadastro de produtos'),
+            style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(42),
+                foregroundColor: AppTheme.primary),
+          ),
+        ] else ...[
+          const SizedBox(height: 10),
+          Row(children: const [
+            Icon(Icons.check_circle, size: 16, color: AppTheme.success),
+            SizedBox(width: 6),
+            Text('Já cadastrado nos produtos',
+                style: TextStyle(fontSize: 12, color: AppTheme.success)),
+          ]),
+        ],
       ]),
       actions: [
         TextButton(
@@ -710,7 +763,7 @@ class _DialogEditarItemState extends State<_DialogEditarItem> {
             Navigator.pop(
               context,
               _ItemAvulso(
-                produtoId:     widget.item.produtoId,
+                produtoId:     _produtoId,
                 nome:          widget.item.nome,
                 unidade:       widget.item.unidade,
                 categoriaIcone: widget.item.categoriaIcone,
