@@ -621,8 +621,10 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
       setState(() {
         // garante que a unidade atual do produto sempre aparece na lista,
         // mesmo que tenha sido removida do cadastro de unidades depois
-        _unidadesDisponiveis = {..._unidade.isNotEmpty ? [_unidade] : [], ...u}
-            .toList();
+        _unidadesDisponiveis = <String>{
+          ..._unidade.isNotEmpty ? [_unidade] : <String>[],
+          ...u,
+        }.toList();
       });
     }
   }
