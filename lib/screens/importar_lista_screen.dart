@@ -27,6 +27,14 @@ class _ImportarListaScreenState extends State<ImportarListaScreen> {
   String? _erro;
 
   @override
+  void initState() {
+    super.initState();
+    // Sem isso, colar o texto não atualizava a tela e o botão "Ler lista"
+    // continuava desabilitado mesmo com o texto colado.
+    _textoCtrl.addListener(() => setState(() {}));
+  }
+
+  @override
   void dispose() {
     _textoCtrl.dispose();
     super.dispose();
