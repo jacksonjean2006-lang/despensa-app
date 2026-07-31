@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import '../database/database_helper.dart';
 import '../models/lista_item.dart';
 import '../models/local_compra.dart';
 import '../models/historico_compra.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../utils/lista_compartilhar.dart';
 
 class ListaComprasScreen extends StatefulWidget {
   final int? listaId;
@@ -333,16 +335,29 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
     );
   }
 
-  void _compartilhar() {
-    final buffer = StringBuffer();
-    buffer.writeln('🛒 $_listaDesc\n');
-    for (final i in _itens) {
-      final check = i.marcado ? '✅' : '⬜';
-      buffer.writeln(
-          '$check ${i.nomeExibicao} — ${formatarQtd(i.quantidade, i.unidade)}');
+  void _compartilhar() async {
+    // Busca marca/categoria dos produtos cadastrados presentes na lista,
+    // pra ir tudo junto no dado estruturado (assim quem importar recebe
+    // a lista com os mesmos detalhes, nao so o nome solto).
+    final produtos = await DatabaseHelper.instance.getProdutos();
+    final infoPorId = <int, Map<String, String?>>{};
+    for (final p in produtos) {
+      if (p.id != null) {
+        infoPorId[p.id!] = {
+          'marca': p.marca,
+          'categoriaNome': p.categoriaNome,
+          'categoriaIcone': p.categoriaIcone,
+        };
+      }
     }
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(buffer.toString())));
+
+    final texto = ListaCompartilhar.gerarTexto(
+      descricao: _listaDesc,
+      itens: _itens,
+      infoProdutoPorId: infoPorId,
+    );
+
+    await Share.share(texto, subject: _listaDesc);
   }
 }
 

@@ -47,6 +47,21 @@ jobs:
             echo "Pasta android já existe."
           fi
 
+      - name: Reconstruir chave de assinatura de release a partir dos secrets
+        run: |
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/release-keystore.jks
+            cat > android/key.properties << EOF
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=release-keystore.jks
+          EOF
+            echo "Chave de release configurada."
+          else
+            echo "Secrets de assinatura não configurados - build vai sair assinado com a chave de debug."
+          fi
+
       - name: Build APK release
         run: flutter build apk --release
 

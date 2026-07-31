@@ -7,6 +7,7 @@ import 'compra_avulsa_screen.dart';
 import 'levantamento_screen.dart';
 import 'selecionar_itens_screen.dart';
 import 'lista_compras_screen.dart';
+import 'configuracoes_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -111,6 +112,14 @@ class _HomeScreenState extends State<HomeScreen> {
           const Text('Minha Despensa', style: TextStyle(fontSize: 18)),
         ]),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Configurações',
+            onPressed: () {
+              Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const ConfiguracoesScreen()));
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.shopping_bag_outlined),
             tooltip: 'Compra avulsa',

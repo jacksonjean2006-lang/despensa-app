@@ -1,0 +1,15 @@
+# Chave de assinatura de release - NUNCA commitar
+android/key.properties
+*.jks
+*.keystore
+
+# Flutter/Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# IDE
+.idea/
+*.iml

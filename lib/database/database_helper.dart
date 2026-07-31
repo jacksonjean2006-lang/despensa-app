@@ -203,6 +203,29 @@ class DatabaseHelper {
   }
 
   // ─── PRODUTOS ──────────────────────────────────────────────
+  // Busca um produto pelo nome (case-insensitive, ignora espaços nas pontas).
+  // Usado na importação de listas pra tentar vincular automaticamente um
+  // item importado a um produto já cadastrado.
+  Future<Produto?> buscarProdutoPorNome(String nome) async {
+    final d = await db;
+    final rows = await d.rawQuery('''
+      SELECT p.*,
+             COALESCE((
+               SELECT quantidade FROM estoque
+               WHERE produto_id = p.id
+               ORDER BY atualizado_em DESC
+               LIMIT 1
+             ), 0) AS estoque_atual,
+             c.nome AS categoria_nome,
+             c.icone AS categoria_icone
+      FROM produtos p
+      LEFT JOIN categorias c ON c.id = p.categoria_id
+      WHERE LOWER(TRIM(p.nome)) = LOWER(TRIM(?))
+      LIMIT 1
+    ''', [nome]);
+    return rows.isEmpty ? null : Produto.fromMap(rows.first);
+  }
+
   Future<List<Produto>> getProdutos({bool apenasAtivos = false}) async {
     final d = await db;
     final rows = await d.rawQuery('''
@@ -633,5 +656,99 @@ class DatabaseHelper {
       LIMIT 20
     ''', [produtoId]);
     return rows.map(HistoricoCompra.fromMap).toList();
+  }
+
+  // ─── IMPORTAÇÃO DE LISTA ───────────────────────────────
+  // Cria uma lista nova já com os itens vindos de uma lista importada.
+  // Cada mapa em [itens] deve ter: nome, quantidade, unidade, marcado,
+  // substituto e opcionalmente produtoId (se já foi resolvido/vinculado
+  // a um produto do cadastro).
+  Future<int> criarListaImportada(
+      String descricao, List<Map<String, dynamic>> itens) async {
+    final d = await db;
+    final listaId = await d.insert('listas', {
+      'descricao': descricao,
+      'criado_em': DateTime.now().toIso8601String(),
+    });
+    for (final item in itens) {
+      await d.insert('lista_itens', {
+        'lista_id': listaId,
+        'produto_id': item['produtoId'],
+        'nome_avulso': item['produtoId'] == null ? item['nome'] : null,
+        'quantidade': item['quantidade'],
+        'unidade': item['unidade'],
+        'marcado': (item['marcado'] == true) ? 1 : 0,
+        'substituto': (item['substituto'] == true) ? 1 : 0,
+      });
+    }
+    return listaId;
+  }
+
+  // ─── BACKUP / RESTORE ───────────────────────────────
+  // Exporta TODAS as tabelas do app pra um Map simples (tabela -> linhas),
+  // pronto pra ser serializado em JSON e salvo/compartilhado como arquivo.
+  Future<Map<String, dynamic>> exportarBackupCompleto() async {
+    final d = await db;
+    const tabelas = [
+      'categorias',
+      'unidades',
+      'produtos',
+      'estoque',
+      'listas',
+      'lista_itens',
+      'locais_compra',
+      'historico_compras',
+    ];
+    final dados = <String, dynamic>{};
+    for (final t in tabelas) {
+      dados[t] = await d.query(t);
+    }
+    return {
+      'tipo': 'backup_minha_despensa',
+      'versao': 1,
+      'geradoEm': DateTime.now().toIso8601String(),
+      'dados': dados,
+    };
+  }
+
+  // Restaura um backup gerado por exportarBackupCompleto.
+  // ATENÇÃO: apaga TODOS os dados atuais antes de restaurar (substituição
+  // completa) — a tela que chama isso precisa confirmar com o usuário antes.
+  Future<void> restaurarBackupCompleto(Map<String, dynamic> backup) async {
+    final d = await db;
+    final dados = backup['dados'] as Map<String, dynamic>;
+    // Ordem que respeita as FKs: apaga na ordem inversa da criacao,
+    // insere na mesma ordem da exportacao (pais antes de filhos).
+    const ordemApagar = [
+      'historico_compras',
+      'lista_itens',
+      'listas',
+      'locais_compra',
+      'estoque',
+      'produtos',
+      'unidades',
+      'categorias',
+    ];
+    await d.transaction((txn) async {
+      for (final t in ordemApagar) {
+        await txn.delete(t);
+      }
+      const ordemInserir = [
+        'categorias',
+        'unidades',
+        'produtos',
+        'estoque',
+        'listas',
+        'lista_itens',
+        'locais_compra',
+        'historico_compras',
+      ];
+      for (final t in ordemInserir) {
+        final linhas = (dados[t] as List?) ?? [];
+        for (final linha in linhas) {
+          await txn.insert(t, Map<String, dynamic>.from(linha));
+        }
+      }
+    });
   }
 }
