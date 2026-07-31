@@ -56,6 +56,11 @@ class _SplashScreenState extends State<SplashScreen> {
               'Gestor de despensa e lista de compras',
               style: TextStyle(fontSize: 13, color: Colors.grey),
             ),
+            const SizedBox(height: 6),
+            const Text(
+              'Desenvolvido por Jean • jacksonjean2006@gmail.com',
+              style: TextStyle(fontSize: 11, color: Colors.grey),
+            ),
             const SizedBox(height: 32),
             const CircularProgressIndicator(color: AppTheme.primary),
           ],

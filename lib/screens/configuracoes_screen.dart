@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
@@ -178,6 +179,40 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
                 const SizedBox(height: 24),
                 const Center(child: CircularProgressIndicator()),
               ],
+              const SizedBox(height: 16),
+              _secao('SOBRE'),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text('Minha Despensa',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                    const Text('Versão 1.0.0',
+                        style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const SizedBox(height: 10),
+                    const Text('Desenvolvido por Jean',
+                        style: TextStyle(fontSize: 13)),
+                    InkWell(
+                      onTap: () {
+                        Clipboard.setData(const ClipboardData(
+                            text: 'jacksonjean2006@gmail.com'));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('E-mail copiado')),
+                        );
+                      },
+                      child: Row(children: [
+                        const Icon(Icons.email_outlined,
+                            size: 14, color: AppTheme.primary),
+                        const SizedBox(width: 4),
+                        Text('jacksonjean2006@gmail.com',
+                            style: TextStyle(
+                                fontSize: 13, color: AppTheme.primary,
+                                decoration: TextDecoration.underline)),
+                      ]),
+                    ),
+                  ]),
+                ),
+              ),
             ],
           ),
         ),
