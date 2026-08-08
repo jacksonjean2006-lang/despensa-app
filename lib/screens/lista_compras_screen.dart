@@ -24,13 +24,22 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
 
   bool get _readOnly => _finalizadoEm != null;
 
-  // Guarda preços e qtds editados em memória (produtoId -> dados)
-  final Map<int, _PrecoEditado> _precosEditados = {};
+  final TextEditingController _buscaCtrl = TextEditingController();
+  String _busca = '';
 
   @override
   void initState() {
     super.initState();
     _carregar();
+    _buscaCtrl.addListener(() {
+      setState(() => _busca = _buscaCtrl.text.trim().toLowerCase());
+    });
+  }
+
+  @override
+  void dispose() {
+    _buscaCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _carregar() async {
@@ -49,24 +58,35 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
 
   int get _marcados => _itens.where((i) => i.marcado).length;
 
-  // Total dos itens que têm preço registrado
+  // Total dos itens que têm preço registrado (lido direto do item, que já
+  // está persistido no banco - não depende de estado em memória da tela)
   double get _totalCompra {
     double total = 0;
     for (final item in _itens) {
-      final key = item.produtoId ?? item.id ?? 0;
-      final editado = _precosEditados[key];
-      if (editado?.precoTotal != null) {
-        total += editado!.precoTotal!;
-      }
+      if (item.precoTotal != null) total += item.precoTotal!;
     }
     return total;
   }
 
-  int get _itensComPreco =>
-      _itens.where((i) {
-        final key = i.produtoId ?? i.id ?? 0;
-        return _precosEditados[key]?.precoTotal != null;
-      }).length;
+  int get _itensComPreco => _itens.where((i) => i.precoTotal != null).length;
+
+  // Itens filtrados pela busca, já agrupados por categoria (a query do
+  // banco já traz ordenado por categoria, então os grupos saem contíguos)
+  List<ListaItem> get _itensFiltrados {
+    if (_busca.isEmpty) return _itens;
+    return _itens
+        .where((i) => i.nomeExibicao.toLowerCase().contains(_busca))
+        .toList();
+  }
+
+  List<MapEntry<String, List<ListaItem>>> get _gruposPorCategoria {
+    final mapa = <String, List<ListaItem>>{};
+    for (final item in _itensFiltrados) {
+      final cat = item.categoriaNome ?? 'Outros';
+      mapa.putIfAbsent(cat, () => []).add(item);
+    }
+    return mapa.entries.toList();
+  }
 
   Future<void> _toggleMarcado(ListaItem item) async {
     if (_readOnly) return;
@@ -128,23 +148,40 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
     final locais = await DatabaseHelper.instance.getLocais();
     if (!mounted) return;
 
-    final key      = item.produtoId ?? item.id ?? 0;
-    final anterior = _precosEditados[key];
-
     final resultado = await showDialog<_PrecoEditado>(
       context: context,
       builder: (_) => _DialogRegistrarPreco(
         item:      item,
         locais:    locais,
-        anterior:  anterior,
+        anterior: item.precoTotal != null
+            ? _PrecoEditado(
+                quantidade: item.quantidade,
+                precoTotal: item.precoTotal,
+                precoUnitario: item.precoUnitario,
+                localId: item.localId,
+                localNome: item.localNome,
+              )
+            : null,
       ),
     );
 
-    if (resultado != null) {
+    if (resultado != null && item.id != null) {
+      // Salva no banco IMEDIATAMENTE - antes o preço só ficava guardado
+      // em uma variável da tela e se perdia quando o app recriava a tela
+      // (ex: celular apagando a tela em segundo plano).
+      await DatabaseHelper.instance.atualizarPrecoItem(
+        item.id!,
+        quantidade: resultado.quantidade,
+        precoTotal: resultado.precoTotal,
+        precoUnitario: resultado.precoUnitario,
+        localId: resultado.localId,
+      );
       setState(() {
-        _precosEditados[key] = resultado;
-        // Atualiza a quantidade no item em memória
-        item.quantidade = resultado.quantidade;
+        item.quantidade     = resultado.quantidade;
+        item.precoTotal     = resultado.precoTotal;
+        item.precoUnitario  = resultado.precoUnitario;
+        item.localId        = resultado.localId;
+        item.localNome      = resultado.localNome;
       });
     }
   }
@@ -162,17 +199,16 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
 
     final agora = DateTime.now().toIso8601String();
     for (final item in _itens.where((i) => i.marcado)) {
-      final key     = item.produtoId ?? item.id ?? 0;
-      final editado = _precosEditados[key];
-
+      // Lê o preço direto do item (já persistido no banco desde que foi
+      // registrado no dialog) - não depende de nenhum estado em memória.
       if (item.produtoId != null) {
         await DatabaseHelper.instance.registrarCompra(HistoricoCompra(
           listaId:            _listaId,
           produtoId:          item.produtoId,
-          localId:            editado?.localId ?? localIdGeral,
-          quantidadeComprada: editado?.quantidade ?? item.quantidade,
-          precoTotal:         editado?.precoTotal,
-          precoUnitario:      editado?.precoUnitario,
+          localId:            item.localId ?? localIdGeral,
+          quantidadeComprada: item.quantidade,
+          precoTotal:         item.precoTotal,
+          precoUnitario:      item.precoUnitario,
           data:               agora,
         ));
       }
@@ -186,7 +222,6 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
           backgroundColor: AppTheme.success,
         ),
       );
-      setState(() => _precosEditados.clear());
       _carregar();
     }
   }
@@ -276,22 +311,74 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
             ]),
           ),
 
+        // Barra de busca
+        if (_itens.length > 1)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: TextField(
+              controller: _buscaCtrl,
+              decoration: InputDecoration(
+                hintText:   'Buscar item...',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _busca.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () => _buscaCtrl.clear(),
+                      )
+                    : null,
+                isDense:     true,
+                filled:      true,
+                fillColor:   Colors.grey.shade100,
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide:   BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+
         Expanded(
           child: _itens.isEmpty
               ? const Center(child: Text('Lista vazia'))
-              : ListView(
+              : _itensFiltrados.isEmpty
+                  ? const Center(child: Text('Nenhum item encontrado'))
+                  : ListView(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
-                  children: _itens.map((item) {
-                    final key     = item.produtoId ?? item.id ?? 0;
-                    final editado = _precosEditados[key];
-                    return _ItemLista(
-                      item:          item,
-                      precoEditado:  editado,
-                      readOnly:      _readOnly,
-                      onToggle:      () => _toggleMarcado(item),
-                      onRemover:     () => _removerItem(item),
-                      onRegistrarPreco: () => _registrarPreco(item),
-                    );
+                  children: _gruposPorCategoria.expand((grupo) {
+                    final categoria = grupo.key;
+                    final itensCategoria = grupo.value;
+                    return [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 10, 4, 4),
+                        child: Row(children: [
+                          if (itensCategoria.first.categoriaIcone != null)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: Text(itensCategoria.first.categoriaIcone!,
+                                  style: const TextStyle(fontSize: 13)),
+                            ),
+                          Text(
+                            categoria.toUpperCase(),
+                            style: TextStyle(
+                              fontSize:      11,
+                              fontWeight:    FontWeight.bold,
+                              letterSpacing: 0.5,
+                              color:         Colors.grey.shade500,
+                            ),
+                          ),
+                        ]),
+                      ),
+                      ...itensCategoria.map((item) {
+                        return _ItemLista(
+                          item:             item,
+                          readOnly:         _readOnly,
+                          onToggle:         () => _toggleMarcado(item),
+                          onRemover:        () => _removerItem(item),
+                          onRegistrarPreco: () => _registrarPreco(item),
+                        );
+                      }),
+                    ];
                   }).toList(),
                 ),
         ),
@@ -381,7 +468,6 @@ class _PrecoEditado {
 // ─── CARD DE ITEM ─────────────────────────────────────────────────────────────
 class _ItemLista extends StatelessWidget {
   final ListaItem item;
-  final _PrecoEditado? precoEditado;
   final bool readOnly;
   final VoidCallback onToggle;
   final VoidCallback onRemover;
@@ -389,7 +475,6 @@ class _ItemLista extends StatelessWidget {
 
   const _ItemLista({
     required this.item,
-    required this.precoEditado,
     this.readOnly = false,
     required this.onToggle,
     required this.onRemover,
@@ -398,10 +483,12 @@ class _ItemLista extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final qtd         = precoEditado?.quantidade ?? item.quantidade;
-    final precoTotal  = precoEditado?.precoTotal;
-    final precoUnit   = precoEditado?.precoUnitario;
-    final localNome   = precoEditado?.localNome;
+    // Lido direto do item - já persistido no banco, não é mais um estado
+    // separado que pode se perder quando a tela é recriada.
+    final qtd         = item.quantidade;
+    final precoTotal  = item.precoTotal;
+    final precoUnit   = item.precoUnitario;
+    final localNome   = item.localNome;
     final temPreco    = precoTotal != null;
 
     return Dismissible(
@@ -560,7 +647,7 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
         text: (widget.anterior?.quantidade ?? widget.item.quantidade)
             .toString());
     _precoCtrl = TextEditingController(
-        text: widget.anterior?.precoTotal?.toString() ?? '');
+        text: widget.anterior?.precoUnitario?.toString() ?? '');
     _localId  = widget.anterior?.localId;
     _qtdCtrl.addListener(()  => setState(() {}));
     _precoCtrl.addListener(() => setState(() {}));
@@ -575,9 +662,9 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
     super.dispose();
   }
 
-  double get _qtd       => double.tryParse(_qtdCtrl.text)   ?? 1;
-  double get _precoTotal => double.tryParse(_precoCtrl.text) ?? 0;
-  double get _precoUnit  => _qtd > 0 ? _precoTotal / _qtd  : 0;
+  double get _qtd         => double.tryParse(_qtdCtrl.text)   ?? 1;
+  double get _precoUnit   => double.tryParse(_precoCtrl.text) ?? 0;
+  double get _precoTotal  => _qtd > 0 ? _precoUnit * _qtd : 0;
 
   Future<void> _salvarLocal() async {
     if (_novoLocalCtrl.text.trim().isEmpty) return;
@@ -598,8 +685,8 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
   }
 
   void _confirmar() {
-    final total = double.tryParse(_precoCtrl.text);
-    final qtd   = double.tryParse(_qtdCtrl.text) ?? widget.item.quantidade;
+    final unitario = double.tryParse(_precoCtrl.text);
+    final qtd      = double.tryParse(_qtdCtrl.text) ?? widget.item.quantidade;
     final localNome = _locais
         .where((l) => l.id == _localId)
         .map((l) => l.nome)
@@ -609,8 +696,8 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
       context,
       _PrecoEditado(
         quantidade:    qtd,
-        precoTotal:    total,
-        precoUnitario: total != null && qtd > 0 ? total / qtd : null,
+        precoTotal:    unitario != null ? unitario * qtd : null,
+        precoUnitario: unitario,
         localId:       _localId,
         localNome:     localNome,
       ),
@@ -634,17 +721,18 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
           ),
           const SizedBox(height: 10),
 
-          // Preço total
+          // Preço unitário
           TextField(
             controller:   _precoCtrl,
-            decoration:   const InputDecoration(
-                labelText: 'Preço total (R\$)',
-                prefixText: 'R\$ '),
+            decoration:   InputDecoration(
+                labelText: 'Preço unitário (R\$)',
+                prefixText: 'R\$ ',
+                suffixText: '/${widget.item.unidade}'),
             keyboardType: TextInputType.number,
           ),
 
-          // Preço unitário calculado
-          if (_precoUnit > 0)
+          // Preço total calculado
+          if (_precoTotal > 0)
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Container(
@@ -657,11 +745,11 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
                 child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                  Text('Preço por ${widget.item.unidade}:',
+                  Text('Preço total:',
                       style: TextStyle(color: Colors.grey.shade600,
                           fontSize: 13)),
                   Text(
-                    formatarMoeda(_precoUnit),
+                    formatarMoeda(_precoTotal),
                     style: const TextStyle(
                         color:      AppTheme.primary,
                         fontWeight: FontWeight.bold,

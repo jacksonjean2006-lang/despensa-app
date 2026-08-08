@@ -8,9 +8,17 @@ class ListaItem {
   bool marcado;
   final bool substituto;
 
+  // Preço/local registrados - persistidos no banco assim que o usuário
+  // confirma o dialog de preço (não ficam só em memória na tela).
+  double? precoTotal;
+  double? precoUnitario;
+  int? localId;
+  String? localNome;
+
   // Campos extras
   String? produtoNome;
   String? produtoFoto;
+  String? categoriaNome;
   String? categoriaIcone;
 
   ListaItem({
@@ -22,8 +30,13 @@ class ListaItem {
     required this.unidade,
     this.marcado = false,
     this.substituto = false,
+    this.precoTotal,
+    this.precoUnitario,
+    this.localId,
+    this.localNome,
     this.produtoNome,
     this.produtoFoto,
+    this.categoriaNome,
     this.categoriaIcone,
   });
 
@@ -38,6 +51,9 @@ class ListaItem {
         'unidade': unidade,
         'marcado': marcado ? 1 : 0,
         'substituto': substituto ? 1 : 0,
+        'preco_total': precoTotal,
+        'preco_unitario': precoUnitario,
+        'local_id': localId,
       };
 
   factory ListaItem.fromMap(Map<String, dynamic> m) => ListaItem(
@@ -49,8 +65,13 @@ class ListaItem {
         unidade: m['unidade'] ?? 'un',
         marcado: (m['marcado'] ?? 0) == 1,
         substituto: (m['substituto'] ?? 0) == 1,
+        precoTotal: m['preco_total'] != null ? (m['preco_total'] as num).toDouble() : null,
+        precoUnitario: m['preco_unitario'] != null ? (m['preco_unitario'] as num).toDouble() : null,
+        localId: m['local_id'],
+        localNome: m['local_nome'],
         produtoNome: m['produto_nome'],
         produtoFoto: m['foto_path'],
+        categoriaNome: m['categoria_nome'],
         categoriaIcone: m['categoria_icone'],
       );
 }

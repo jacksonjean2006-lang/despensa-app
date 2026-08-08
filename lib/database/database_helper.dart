@@ -21,7 +21,7 @@ class DatabaseHelper {
     final path = join(await getDatabasesPath(), 'despensa.db');
     return openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -48,6 +48,22 @@ class DatabaseHelper {
           )
         ''');
         await _seedUnidades(db);
+      }
+    }
+    if (oldVersion < 4) {
+      // Antes o preço/local ficavam só em memória na tela (perdidos ao
+      // reconstruir o widget - ex: celular apagando a tela). Agora ficam
+      // persistidos direto no item da lista assim que registrados.
+      final cols = await db.rawQuery("PRAGMA table_info(lista_itens)");
+      final nomes = cols.map((c) => c['name']).toSet();
+      if (!nomes.contains('preco_total')) {
+        await db.execute('ALTER TABLE lista_itens ADD COLUMN preco_total REAL');
+      }
+      if (!nomes.contains('preco_unitario')) {
+        await db.execute('ALTER TABLE lista_itens ADD COLUMN preco_unitario REAL');
+      }
+      if (!nomes.contains('local_id')) {
+        await db.execute('ALTER TABLE lista_itens ADD COLUMN local_id INTEGER REFERENCES locais_compra(id)');
       }
     }
   }
@@ -99,7 +115,10 @@ class DatabaseHelper {
         quantidade REAL NOT NULL DEFAULT 1,
         unidade TEXT,
         marcado INTEGER NOT NULL DEFAULT 0,
-        substituto INTEGER NOT NULL DEFAULT 0
+        substituto INTEGER NOT NULL DEFAULT 0,
+        preco_total REAL,
+        preco_unitario REAL,
+        local_id INTEGER REFERENCES locais_compra(id)
       )
     ''');
     await db.execute('''
@@ -358,12 +377,15 @@ class DatabaseHelper {
       SELECT li.*,
              p.nome AS produto_nome,
              p.foto_path,
-             c.icone AS categoria_icone
+             c.nome AS categoria_nome,
+             c.icone AS categoria_icone,
+             loc.nome AS local_nome
       FROM lista_itens li
       LEFT JOIN produtos p ON p.id = li.produto_id
       LEFT JOIN categorias c ON c.id = p.categoria_id
+      LEFT JOIN locais_compra loc ON loc.id = li.local_id
       WHERE li.lista_id = ?
-      ORDER BY p.nome, li.nome_avulso
+      ORDER BY COALESCE(c.nome, 'zzz'), p.nome, li.nome_avulso
     ''', [listaId]);
     return rows.map(ListaItem.fromMap).toList();
   }
@@ -377,6 +399,31 @@ class DatabaseHelper {
     final d = await db;
     await d.update('lista_itens', {'marcado': marcado ? 1 : 0},
         where: 'id = ?', whereArgs: [itemId]);
+  }
+
+  // Persiste o preço/quantidade/local assim que o usuário confirma o
+  // dialog de preço - NÃO fica só em memória na tela (isso era o motivo
+  // dos valores sumirem quando o app perdia o estado da tela, ex: celular
+  // apagando a tela ou o Android reciclando a Activity em segundo plano).
+  Future<void> atualizarPrecoItem(
+    int itemId, {
+    required double quantidade,
+    double? precoTotal,
+    double? precoUnitario,
+    int? localId,
+  }) async {
+    final d = await db;
+    await d.update(
+      'lista_itens',
+      {
+        'quantidade': quantidade,
+        'preco_total': precoTotal,
+        'preco_unitario': precoUnitario,
+        'local_id': localId,
+      },
+      where: 'id = ?',
+      whereArgs: [itemId],
+    );
   }
 
   Future<void> deletarItem(int itemId) async {
