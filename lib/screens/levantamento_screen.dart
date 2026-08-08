@@ -69,7 +69,7 @@ class _LevantamentoScreenState extends State<LevantamentoScreen> {
           backgroundColor: AppTheme.success,
         ),
       );
-      Navigator.pushReplacement(
+      Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const ListaComprasScreen()),
       );

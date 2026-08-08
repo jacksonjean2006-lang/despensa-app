@@ -312,7 +312,7 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
           ),
 
         // Barra de busca
-        if (_itens.length > 1)
+        if (_itens.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
             child: TextField(
