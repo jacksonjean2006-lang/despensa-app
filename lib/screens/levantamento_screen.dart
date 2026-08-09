@@ -207,14 +207,16 @@ class _ItemLevantamentoState extends State<_ItemLevantamento> {
           const SizedBox(height: 10),
           Row(children: [
             SizedBox(
-              width: 90,
+              width: 100,
               child: TextField(
                 controller: widget.ctrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 textAlign: TextAlign.center,
                 decoration: InputDecoration(
+                  labelText: 'Em estoque',
                   hintText: '0',
                   suffixText: widget.produto.unidade,
+                  isDense: true,
                 ),
               ),
             ),

@@ -165,6 +165,9 @@ class _CompraAvulsaScreenState extends State<CompraAvulsaScreen> {
           quantidade: item.quantidade,
           unidade: item.unidade,
           marcado: true,
+          precoTotal: item.precoTotal,
+          precoUnitario: item.precoUnitario,
+          localId: _localSelecionado?.id,
         ));
         await DatabaseHelper.instance.registrarCompra(HistoricoCompra(
           listaId:          listaId,
@@ -564,10 +567,10 @@ class _DialogItemAvulsoState extends State<_DialogItemAvulso> {
     });
   }
 
-  double get _precoUnit {
-    final total = double.tryParse(_precoCtrl.text) ?? 0;
-    final qtd   = double.tryParse(_qtdCtrl.text) ?? 1;
-    return qtd > 0 ? total / qtd : 0;
+  double get _precoTotalCalc {
+    final unit = double.tryParse(_precoCtrl.text) ?? 0;
+    final qtd  = double.tryParse(_qtdCtrl.text) ?? 1;
+    return qtd > 0 ? unit * qtd : 0;
   }
 
   @override
@@ -602,16 +605,18 @@ class _DialogItemAvulsoState extends State<_DialogItemAvulso> {
         const SizedBox(height: 10),
         TextField(
           controller: _precoCtrl,
-          decoration: const InputDecoration(
-              labelText: 'Preço total (opcional)', prefixText: 'R\$ '),
+          decoration: InputDecoration(
+              labelText: 'Preço unitário (opcional)',
+              prefixText: 'R\$ ',
+              suffixText: '/$_unidade'),
           keyboardType: TextInputType.number,
           onChanged: (_) => setState(() {}),
         ),
-        if (_precoUnit > 0)
+        if (_precoTotalCalc > 0)
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(
-              '${formatarMoeda(_precoUnit)} por $_unidade',
+              'Total: ${formatarMoeda(_precoTotalCalc)}',
               style: const TextStyle(
                   color: AppTheme.primary, fontWeight: FontWeight.w600),
             ),
@@ -624,16 +629,16 @@ class _DialogItemAvulsoState extends State<_DialogItemAvulso> {
         ElevatedButton(
           onPressed: () {
             if (_nomeCtrl.text.trim().isEmpty) return;
-            final qtd   = double.tryParse(_qtdCtrl.text) ?? 1;
-            final total = double.tryParse(_precoCtrl.text);
+            final qtd = double.tryParse(_qtdCtrl.text) ?? 1;
+            final unit = double.tryParse(_precoCtrl.text);
             Navigator.pop(
               context,
               _ItemAvulso(
                 nome:          _nomeCtrl.text.trim(),
                 unidade:       _unidade,
                 quantidade:    qtd,
-                precoTotal:    total,
-                precoUnitario: total != null && qtd > 0 ? total / qtd : null,
+                precoTotal:    unit != null ? unit * qtd : null,
+                precoUnitario: unit,
               ),
             );
           },
@@ -669,7 +674,7 @@ class _DialogEditarItemState extends State<_DialogEditarItem> {
     _qtdCtrl   = TextEditingController(
         text: widget.item.quantidade.toString());
     _precoCtrl = TextEditingController(
-        text: widget.item.precoTotal?.toString() ?? '');
+        text: widget.item.precoUnitario?.toString() ?? '');
     _qtdCtrl.addListener(() => setState(() {}));
     _precoCtrl.addListener(() => setState(() {}));
   }
@@ -696,10 +701,10 @@ class _DialogEditarItemState extends State<_DialogEditarItem> {
     }
   }
 
-  double get _precoUnit {
-    final total = double.tryParse(_precoCtrl.text) ?? 0;
-    final qtd   = double.tryParse(_qtdCtrl.text) ?? 1;
-    return qtd > 0 ? total / qtd : 0;
+  double get _precoTotalCalc {
+    final unit = double.tryParse(_precoCtrl.text) ?? 0;
+    final qtd  = double.tryParse(_qtdCtrl.text) ?? 1;
+    return qtd > 0 ? unit * qtd : 0;
   }
 
   @override
@@ -718,16 +723,17 @@ class _DialogEditarItemState extends State<_DialogEditarItem> {
         const SizedBox(height: 10),
         TextField(
           controller: _precoCtrl,
-          decoration: const InputDecoration(
-              labelText: 'Preço total (opcional)',
-              prefixText: 'R\$ '),
+          decoration: InputDecoration(
+              labelText: 'Preço unitário (opcional)',
+              prefixText: 'R\$ ',
+              suffixText: '/${widget.item.unidade}'),
           keyboardType: TextInputType.number,
         ),
-        if (_precoUnit > 0)
+        if (_precoTotalCalc > 0)
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(
-              '${formatarMoeda(_precoUnit)} por ${widget.item.unidade}',
+              'Total: ${formatarMoeda(_precoTotalCalc)}',
               style: const TextStyle(
                   color: AppTheme.primary, fontWeight: FontWeight.w600),
             ),
@@ -766,8 +772,8 @@ class _DialogEditarItemState extends State<_DialogEditarItem> {
             child: const Text('Cancelar')),
         ElevatedButton(
           onPressed: () {
-            final qtd   = double.tryParse(_qtdCtrl.text) ?? 1;
-            final total = double.tryParse(_precoCtrl.text);
+            final qtd = double.tryParse(_qtdCtrl.text) ?? 1;
+            final unit = double.tryParse(_precoCtrl.text);
             Navigator.pop(
               context,
               _ItemAvulso(
@@ -776,8 +782,8 @@ class _DialogEditarItemState extends State<_DialogEditarItem> {
                 unidade:       widget.item.unidade,
                 categoriaIcone: widget.item.categoriaIcone,
                 quantidade:    qtd,
-                precoTotal:    total,
-                precoUnitario: total != null && qtd > 0 ? total / qtd : null,
+                precoTotal:    unit != null ? unit * qtd : null,
+                precoUnitario: unit,
               ),
             );
           },
