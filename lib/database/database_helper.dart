@@ -561,16 +561,21 @@ class DatabaseHelper {
   // um item cadastrado.
   Future<int> incluirAvulsoNoCadastro(String nome, String unidade) async {
     final d = await db;
-    final id = await d.insert('produtos', {
-      'nome': nome,
-      'unidade': unidade,
-      'consumo_mensal': 0,
-      'estoque_minimo': 0,
-      'categoria_id': null,
-      'marca': null,
-      'ativo': 1,
-      'criado_em': DateTime.now().toIso8601String(),
-    });
+    // Evita duplicar: se já existe um produto com esse nome (ex: usuário
+    // clicou "incluir" mais de uma vez pro mesmo item avulso), reaproveita
+    // em vez de criar outro.
+    final existente = await buscarProdutoPorNome(nome);
+    final id = existente?.id ??
+        await d.insert('produtos', {
+          'nome': nome,
+          'unidade': unidade,
+          'consumo_mensal': 0,
+          'estoque_minimo': 0,
+          'categoria_id': null,
+          'marca': null,
+          'ativo': 1,
+          'criado_em': DateTime.now().toIso8601String(),
+        });
     await d.update('historico_compras', {'produto_id': id, 'nome_avulso': null},
         where: 'produto_id IS NULL AND nome_avulso = ?', whereArgs: [nome]);
     await d.update('lista_itens', {'produto_id': id, 'nome_avulso': null},

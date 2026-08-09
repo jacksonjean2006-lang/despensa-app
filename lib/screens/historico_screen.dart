@@ -273,6 +273,7 @@ class _AbaVisaoGeralState extends State<_AbaVisaoGeral>
           const SnackBar(content: Text(
               'Produto cadastrado! Ajuste os detalhes na aba Produtos.')),
         );
+        _carregar();
       }
     }
   }
