@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import '../database/database_helper.dart';
 import '../theme.dart';
+import '../utils/atalho_tela_inicial.dart';
 import 'importar_lista_screen.dart';
 
 class ConfiguracoesScreen extends StatefulWidget {
@@ -126,6 +127,22 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
     );
   }
 
+  Future<void> _fixarNaTelaInicial() async {
+    final ok = await AtalhoTelaInicial.fixarNaTelaInicial();
+    if (!mounted) return;
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Confirme no popup do sistema para fixar o ícone')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(
+            'Esse aparelho/lançador não suporta essa função. '
+            'Segure o ícone do app na gaveta de aplicativos e arraste até a tela inicial.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -173,6 +190,19 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
                       style: TextStyle(fontSize: 12)),
                   trailing: const Icon(Icons.chevron_right, color: Colors.grey),
                   onTap: _restaurarBackup,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _secao('ATALHO'),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.add_to_home_screen_outlined, color: AppTheme.primary),
+                  title: const Text('Adicionar ícone à tela inicial'),
+                  subtitle: const Text(
+                      'Fixa um atalho do app no Desktop do celular (o Android vai pedir sua confirmação)',
+                      style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                  onTap: _fixarNaTelaInicial,
                 ),
               ),
               if (_processando) ...[

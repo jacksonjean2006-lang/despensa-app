@@ -207,17 +207,32 @@ class _ItemLevantamentoState extends State<_ItemLevantamento> {
           const SizedBox(height: 10),
           Row(children: [
             SizedBox(
-              width: 100,
-              child: TextField(
-                controller: widget.ctrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                textAlign: TextAlign.center,
-                decoration: InputDecoration(
-                  labelText: 'Em estoque',
-                  hintText: '0',
-                  suffixText: widget.produto.unidade,
-                  isDense: true,
-                ),
+              width: 108,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(left: 2, bottom: 3),
+                    child: Text('Em estoque',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey.shade600)),
+                  ),
+                  TextField(
+                    controller: widget.ctrl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    textAlign: TextAlign.center,
+                    decoration: InputDecoration(
+                      hintText: '0',
+                      suffixText: widget.produto.unidade,
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                          vertical: 10, horizontal: 6),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(width: 12),
