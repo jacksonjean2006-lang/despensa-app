@@ -556,6 +556,7 @@ class _DialogItemAvulsoState extends State<_DialogItemAvulso> {
   final _nomeCtrl  = TextEditingController();
   final _qtdCtrl   = TextEditingController(text: '1');
   final _precoCtrl = TextEditingController();
+  final _descontoCtrl = TextEditingController();
   String _unidade  = 'un';
   List<String> _unidades  = ['kg', 'g', 'L', 'ml', 'un', 'cx', 'pct'];
 
@@ -567,11 +568,15 @@ class _DialogItemAvulsoState extends State<_DialogItemAvulso> {
     });
   }
 
-  double get _precoTotalCalc {
+  double get _subtotalCalc {
     final unit = double.tryParse(_precoCtrl.text) ?? 0;
     final qtd  = double.tryParse(_qtdCtrl.text) ?? 1;
     return qtd > 0 ? unit * qtd : 0;
   }
+
+  double get _desconto => double.tryParse(_descontoCtrl.text) ?? 0;
+  double get _precoTotalCalc =>
+      (_subtotalCalc - _desconto) < 0 ? 0 : (_subtotalCalc - _desconto);
 
   @override
   Widget build(BuildContext context) {
@@ -612,6 +617,15 @@ class _DialogItemAvulsoState extends State<_DialogItemAvulso> {
           keyboardType: TextInputType.number,
           onChanged: (_) => setState(() {}),
         ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _descontoCtrl,
+          decoration: const InputDecoration(
+              labelText: 'Desconto por quantidade (opcional)',
+              prefixText: 'R\$ '),
+          keyboardType: TextInputType.number,
+          onChanged: (_) => setState(() {}),
+        ),
         if (_precoTotalCalc > 0)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -631,13 +645,19 @@ class _DialogItemAvulsoState extends State<_DialogItemAvulso> {
             if (_nomeCtrl.text.trim().isEmpty) return;
             final qtd = double.tryParse(_qtdCtrl.text) ?? 1;
             final unit = double.tryParse(_precoCtrl.text);
+            final desconto = double.tryParse(_descontoCtrl.text) ?? 0;
+            double? total;
+            if (unit != null) {
+              final subtotal = unit * qtd;
+              total = (subtotal - desconto) < 0 ? 0 : (subtotal - desconto);
+            }
             Navigator.pop(
               context,
               _ItemAvulso(
                 nome:          _nomeCtrl.text.trim(),
                 unidade:       _unidade,
                 quantidade:    qtd,
-                precoTotal:    unit != null ? unit * qtd : null,
+                precoTotal:    total,
                 precoUnitario: unit,
               ),
             );

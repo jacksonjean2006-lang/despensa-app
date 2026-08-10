@@ -197,6 +197,27 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
       builder: (_) => _DialogSelecionarLocal(locais: locais),
     );
 
+    // Desconto geral ao finalizar (ex: cupom, promoção do caixa) - reduz
+    // proporcionalmente o valor gasto de cada item, sem mexer no preço
+    // unitário salvo (que continua refletindo o preço real do produto).
+    if (!mounted) return;
+    final totalMarcados = _itens
+        .where((i) => i.marcado && i.precoTotal != null)
+        .fold<double>(0, (s, i) => s + i.precoTotal!);
+    double descontoFinal = 0;
+    if (totalMarcados > 0) {
+      descontoFinal = await showDialog<double>(
+            context: context,
+            builder: (_) => _DialogDescontoFinal(totalAtual: totalMarcados),
+          ) ??
+          0;
+    }
+    final fator = (descontoFinal > 0 && totalMarcados > 0)
+        ? (((totalMarcados - descontoFinal) / totalMarcados)
+            .clamp(0, 1))
+            .toDouble()
+        : 1.0;
+
     final agora = DateTime.now().toIso8601String();
     for (final item in _itens.where((i) => i.marcado)) {
       // Lê o preço direto do item (já persistido no banco desde que foi
@@ -207,7 +228,8 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
           produtoId:          item.produtoId,
           localId:            item.localId ?? localIdGeral,
           quantidadeComprada: item.quantidade,
-          precoTotal:         item.precoTotal,
+          precoTotal:         item.precoTotal != null
+              ? item.precoTotal! * fator : null,
           precoUnitario:      item.precoUnitario,
           data:               agora,
         ));
@@ -217,8 +239,10 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
     await DatabaseHelper.instance.finalizarLista(_listaId!);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Compra finalizada! Estoque atualizado.'),
+        SnackBar(
+          content: Text(descontoFinal > 0
+              ? 'Compra finalizada com desconto de ${formatarMoeda(descontoFinal)}!'
+              : 'Compra finalizada! Estoque atualizado.'),
           backgroundColor: AppTheme.success,
         ),
       );
@@ -453,6 +477,7 @@ class _PrecoEditado {
   final double quantidade;
   final double? precoTotal;
   final double? precoUnitario;
+  final double? desconto;
   final int? localId;
   final String? localNome;
 
@@ -460,6 +485,7 @@ class _PrecoEditado {
     required this.quantidade,
     this.precoTotal,
     this.precoUnitario,
+    this.desconto,
     this.localId,
     this.localNome,
   });
@@ -632,6 +658,7 @@ class _DialogRegistrarPreco extends StatefulWidget {
 class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
   late TextEditingController _qtdCtrl;
   late TextEditingController _precoCtrl;
+  late TextEditingController _descontoCtrl;
   int? _localId;
   bool _adicionandoLocal = false;
   final _novoLocalCtrl = TextEditingController();
@@ -648,23 +675,31 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
             .toString());
     _precoCtrl = TextEditingController(
         text: widget.anterior?.precoUnitario?.toString() ?? '');
+    _descontoCtrl = TextEditingController(
+        text: (widget.anterior?.desconto != null && widget.anterior!.desconto! > 0)
+            ? widget.anterior!.desconto.toString() : '');
     _localId  = widget.anterior?.localId;
     _qtdCtrl.addListener(()  => setState(() {}));
     _precoCtrl.addListener(() => setState(() {}));
+    _descontoCtrl.addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
     _qtdCtrl.dispose();
     _precoCtrl.dispose();
+    _descontoCtrl.dispose();
     _novoLocalCtrl.dispose();
     _novoRefCtrl.dispose();
     super.dispose();
   }
 
-  double get _qtd         => double.tryParse(_qtdCtrl.text)   ?? 1;
-  double get _precoUnit   => double.tryParse(_precoCtrl.text) ?? 0;
-  double get _precoTotal  => _qtd > 0 ? _precoUnit * _qtd : 0;
+  double get _qtd          => double.tryParse(_qtdCtrl.text)   ?? 1;
+  double get _precoUnit    => double.tryParse(_precoCtrl.text) ?? 0;
+  double get _subtotal     => _qtd > 0 ? _precoUnit * _qtd : 0;
+  double get _desconto     => double.tryParse(_descontoCtrl.text) ?? 0;
+  double get _precoTotal   =>
+      (_subtotal - _desconto) < 0 ? 0 : (_subtotal - _desconto);
 
   Future<void> _salvarLocal() async {
     if (_novoLocalCtrl.text.trim().isEmpty) return;
@@ -687,17 +722,25 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
   void _confirmar() {
     final unitario = double.tryParse(_precoCtrl.text);
     final qtd      = double.tryParse(_qtdCtrl.text) ?? widget.item.quantidade;
+    final desconto = double.tryParse(_descontoCtrl.text) ?? 0;
     final localNome = _locais
         .where((l) => l.id == _localId)
         .map((l) => l.nome)
         .firstOrNull;
 
+    double? total;
+    if (unitario != null) {
+      final subtotal = unitario * qtd;
+      total = (subtotal - desconto) < 0 ? 0 : (subtotal - desconto);
+    }
+
     Navigator.pop(
       context,
       _PrecoEditado(
         quantidade:    qtd,
-        precoTotal:    unitario != null ? unitario * qtd : null,
+        precoTotal:    total,
         precoUnitario: unitario,
+        desconto:      desconto > 0 ? desconto : null,
         localId:       _localId,
         localNome:     localNome,
       ),
@@ -731,8 +774,8 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
             keyboardType: TextInputType.number,
           ),
 
-          // Preço total calculado
-          if (_precoTotal > 0)
+          // Preço total calculado (com desconto se houver)
+          if (_precoTotal > 0 || _desconto > 0)
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Container(
@@ -742,22 +785,55 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
                   color:        AppTheme.primary.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                  Text('Preço total:',
-                      style: TextStyle(color: Colors.grey.shade600,
-                          fontSize: 13)),
-                  Text(
-                    formatarMoeda(_precoTotal),
-                    style: const TextStyle(
-                        color:      AppTheme.primary,
-                        fontWeight: FontWeight.bold,
-                        fontSize:   15),
-                  ),
+                child: Column(children: [
+                  if (_desconto > 0) ...[
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                      Text('Subtotal:',
+                          style: TextStyle(color: Colors.grey.shade600,
+                              fontSize: 13)),
+                      Text(formatarMoeda(_subtotal),
+                          style: TextStyle(color: Colors.grey.shade600,
+                              fontSize: 13)),
+                    ]),
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                      Text('Desconto:',
+                          style: TextStyle(color: Colors.grey.shade600,
+                              fontSize: 13)),
+                      Text('- ${formatarMoeda(_desconto)}',
+                          style: const TextStyle(
+                              color: AppTheme.danger, fontSize: 13)),
+                    ]),
+                    const Divider(height: 12),
+                  ],
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                    Text('Preço total:',
+                        style: TextStyle(color: Colors.grey.shade600,
+                            fontSize: 13)),
+                    Text(
+                      formatarMoeda(_precoTotal),
+                      style: const TextStyle(
+                          color:      AppTheme.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize:   15),
+                    ),
+                  ]),
                 ]),
               ),
             ),
+
+          const SizedBox(height: 10),
+          // Desconto por quantidade (opcional)
+          TextField(
+            controller:   _descontoCtrl,
+            decoration:   const InputDecoration(
+                labelText: 'Desconto por quantidade (opcional)',
+                prefixText: 'R\$ ',
+                helperText: 'Ex: comprou mais e ganhou desconto no total'),
+            keyboardType: TextInputType.number,
+          ),
 
           const SizedBox(height: 12),
           const Divider(),
@@ -886,6 +962,68 @@ class _DialogAvulsoState extends State<_DialogAvulso> {
               backgroundColor: AppTheme.primary,
               foregroundColor: Colors.white),
           child: const Text('Adicionar'),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── DIALOG DESCONTO AO FINALIZAR ──────────────────────────────────────
+class _DialogDescontoFinal extends StatefulWidget {
+  final double totalAtual;
+  const _DialogDescontoFinal({required this.totalAtual});
+  @override
+  State<_DialogDescontoFinal> createState() => _DialogDescontoFinalState();
+}
+
+class _DialogDescontoFinalState extends State<_DialogDescontoFinal> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  double get _desconto => double.tryParse(_ctrl.text) ?? 0;
+  double get _totalFinal =>
+      (widget.totalAtual - _desconto) < 0 ? 0 : (widget.totalAtual - _desconto);
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Desconto na compra'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('Ganhou algum desconto no caixa? (opcional)',
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+        const SizedBox(height: 12),
+        TextField(
+          controller:   _ctrl,
+          autofocus:    true,
+          decoration:   const InputDecoration(
+              labelText: 'Desconto total (R\$)', prefixText: 'R\$ '),
+          keyboardType: TextInputType.number,
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 10),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          const Text('Total final:', style: TextStyle(fontWeight: FontWeight.w500)),
+          Text(formatarMoeda(_totalFinal),
+              style: const TextStyle(
+                  color: AppTheme.primary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16)),
+        ]),
+      ]),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context, 0.0),
+            child: const Text('Sem desconto')),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, _desconto),
+          style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
+          child: const Text('Confirmar'),
         ),
       ],
     );

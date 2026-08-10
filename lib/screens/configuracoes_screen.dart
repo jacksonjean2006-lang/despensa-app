@@ -217,7 +217,7 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     const Text('Minha Despensa',
                         style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                    const Text('Versão 1.0.0',
+                    const Text('Versão 4.6.1',
                         style: TextStyle(fontSize: 12, color: Colors.grey)),
                     const SizedBox(height: 10),
                     const Text('Desenvolvido por Jean',
@@ -243,11 +243,45 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
                   ]),
                 ),
               ),
+              const SizedBox(height: 16),
+              _secao('SAIR'),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.exit_to_app, color: AppTheme.danger),
+                  title: const Text('Sair do app'),
+                  trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                  onTap: _confirmarSair,
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _confirmarSair() async {
+    final confirmou = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Sair do app?'),
+        content: const Text('Isso fecha o Minha Despensa.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.danger, foregroundColor: Colors.white),
+            child: const Text('Sair'),
+          ),
+        ],
+      ),
+    );
+    if (confirmou == true) {
+      SystemNavigator.pop();
+    }
   }
 
   Widget _secao(String label) => Padding(
