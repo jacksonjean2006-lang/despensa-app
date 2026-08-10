@@ -18,6 +18,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   List<Produto> _produtos = [];
   bool _carregando = true;
+  Map<String, dynamic>? _listaAberta;
 
   @override
   void initState() {
@@ -28,7 +29,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _carregar() async {
     setState(() => _carregando = true);
     final p = await DatabaseHelper.instance.getProdutos(apenasAtivos: true);
-    setState(() { _produtos = p; _carregando = false; });
+    final listaAberta = await DatabaseHelper.instance.getListaAberta();
+    setState(() { _produtos = p; _listaAberta = listaAberta; _carregando = false; });
   }
 
   List<Produto> get _criticos =>
@@ -38,42 +40,70 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Produto> get _ok =>
       _produtos.where((p) => p.statusEstoque == 'ok').toList();
 
+  Future<void> _avulsaBloqueada() async {
+    final ir = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Lista em andamento'),
+        content: Text(
+            'Você já tem uma lista em andamento ("${_listaAberta!['descricao']}"). '
+            'Finalize-a antes de registrar uma compra avulsa, ou adicione itens direto por lá.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Fechar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
+            child: const Text('Ver lista'),
+          ),
+        ],
+      ),
+    );
+    if (ir == true && mounted) {
+      Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const ListaComprasScreen()));
+    }
+  }
+
   Future<void> _abrirNovaLista() async {
     final listaAberta = await DatabaseHelper.instance.getListaAberta();
     if (!mounted) return;
+
+    // Já há lista em andamento: não oferece mais gerar automático/manual
+    // por aqui, só leva direto pra lista (adição de itens passa a ser só
+    // pelo botão "+ Adicionar item" dentro dela).
+    if (listaAberta != null) {
+      Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const ListaComprasScreen()));
+      return;
+    }
 
     final opcao = await showModalBottomSheet<String>(
       context: context,
       builder: (_) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                listaAberta != null ? 'Você já tem uma lista em aberto' : 'Como montar a lista?',
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                'Como montar a lista?',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
               ),
             ),
           ),
-          if (listaAberta != null)
-            ListTile(
-              leading: const Icon(Icons.shopping_cart_outlined, color: AppTheme.success),
-              title: const Text('Ver lista atual'),
-              subtitle: Text(listaAberta['descricao'] as String,
-                  style: const TextStyle(fontSize: 12)),
-              onTap: () => Navigator.pop(context, 'ver'),
-            ),
           ListTile(
             leading: const Icon(Icons.fact_check_outlined, color: AppTheme.primary),
-            title: Text(listaAberta != null ? 'Adicionar mais (automático)' : 'Gerar automático'),
+            title: const Text('Gerar automático'),
             subtitle: const Text('Baseado no levantamento de estoque',
                 style: TextStyle(fontSize: 12)),
             onTap: () => Navigator.pop(context, 'auto'),
           ),
           ListTile(
             leading: const Icon(Icons.checklist, color: AppTheme.primary),
-            title: Text(listaAberta != null ? 'Adicionar mais (manual)' : 'Selecionar manualmente'),
+            title: const Text('Selecionar manualmente'),
             subtitle: const Text('Escolher os produtos direto da lista',
                 style: TextStyle(fontSize: 12)),
             onTap: () => Navigator.pop(context, 'manual'),
@@ -83,10 +113,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     if (!mounted) return;
-    if (opcao == 'ver') {
-      Navigator.push(context,
-          MaterialPageRoute(builder: (_) => const ListaComprasScreen()));
-    } else if (opcao == 'auto') {
+    if (opcao == 'auto') {
       Navigator.push(context,
           MaterialPageRoute(builder: (_) => const LevantamentoScreen()));
     } else if (opcao == 'manual') {
@@ -124,6 +151,10 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.shopping_bag_outlined),
             tooltip: 'Compra avulsa',
             onPressed: () async {
+              if (_listaAberta != null) {
+                _avulsaBloqueada();
+                return;
+              }
               final alterou = await Navigator.push<bool>(
                 context,
                 MaterialPageRoute(
@@ -141,20 +172,27 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             // Botão compra avulsa
             Card(
-              color: AppTheme.primary.withOpacity(0.06),
+              color: (_listaAberta != null ? Colors.grey : AppTheme.primary)
+                  .withOpacity(0.06),
               child: ListTile(
-                leading: const Icon(Icons.shopping_bag_outlined,
-                    color: AppTheme.primary),
-                title: const Text('Compra avulsa',
+                leading: Icon(Icons.shopping_bag_outlined,
+                    color: _listaAberta != null ? Colors.grey : AppTheme.primary),
+                title: Text('Compra avulsa',
                     style: TextStyle(
                         fontWeight: FontWeight.w600,
-                        color: AppTheme.primary)),
-                subtitle: const Text(
-                    'Registre uma compra sem gerar lista',
-                    style: TextStyle(fontSize: 12)),
-                trailing: const Icon(Icons.arrow_forward_ios,
-                    size: 14, color: AppTheme.primary),
+                        color: _listaAberta != null ? Colors.grey.shade600 : AppTheme.primary)),
+                subtitle: Text(
+                    _listaAberta != null
+                        ? 'Indisponível - há uma lista em andamento'
+                        : 'Registre uma compra sem gerar lista',
+                    style: const TextStyle(fontSize: 12)),
+                trailing: Icon(Icons.arrow_forward_ios,
+                    size: 14, color: _listaAberta != null ? Colors.grey : AppTheme.primary),
                 onTap: () async {
+                  if (_listaAberta != null) {
+                    _avulsaBloqueada();
+                    return;
+                  }
                   final alterou = await Navigator.push<bool>(
                     context,
                     MaterialPageRoute(
@@ -171,13 +209,18 @@ class _HomeScreenState extends State<HomeScreen> {
               color: AppTheme.success.withOpacity(0.06),
               child: ListTile(
                 leading: const Icon(Icons.playlist_add, color: AppTheme.success),
-                title: const Text('Adicionar Lista de Compras',
-                    style: TextStyle(
+                title: Text(
+                    _listaAberta != null
+                        ? 'Adicionar itens à lista'
+                        : 'Adicionar Lista de Compras',
+                    style: const TextStyle(
                         fontWeight: FontWeight.w600,
                         color: AppTheme.success)),
-                subtitle: const Text(
-                    'Gere automático ou monte manualmente',
-                    style: TextStyle(fontSize: 12)),
+                subtitle: Text(
+                    _listaAberta != null
+                        ? 'Já há uma lista em andamento ("${_listaAberta!['descricao']}")'
+                        : 'Gere automático ou monte manualmente',
+                    style: const TextStyle(fontSize: 12)),
                 trailing: const Icon(Icons.arrow_forward_ios,
                     size: 14, color: AppTheme.success),
                 onTap: _abrirNovaLista,

@@ -574,9 +574,13 @@ class _DialogItemAvulsoState extends State<_DialogItemAvulso> {
     return qtd > 0 ? unit * qtd : 0;
   }
 
-  double get _desconto => double.tryParse(_descontoCtrl.text) ?? 0;
-  double get _precoTotalCalc =>
-      (_subtotalCalc - _desconto) < 0 ? 0 : (_subtotalCalc - _desconto);
+  double get _precoUnit => double.tryParse(_precoCtrl.text) ?? 0;
+  double get _precoComDesconto => double.tryParse(_descontoCtrl.text) ?? 0;
+  bool   get _temDesconto => _precoComDesconto > 0 && _precoComDesconto < _precoUnit;
+  double get _precoTotalCalc {
+    final qtd = double.tryParse(_qtdCtrl.text) ?? 1;
+    return _temDesconto ? _precoComDesconto * qtd : _subtotalCalc;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -620,9 +624,11 @@ class _DialogItemAvulsoState extends State<_DialogItemAvulso> {
         const SizedBox(height: 10),
         TextField(
           controller: _descontoCtrl,
-          decoration: const InputDecoration(
-              labelText: 'Desconto por quantidade (opcional)',
-              prefixText: 'R\$ '),
+          decoration: InputDecoration(
+              labelText: 'Preço com desconto (opcional)',
+              prefixText: 'R\$ ',
+              suffixText: '/$_unidade',
+              helperText: 'Ex: acima dessa qtd, sai por esse valor cada'),
           keyboardType: TextInputType.number,
           onChanged: (_) => setState(() {}),
         ),
@@ -645,11 +651,15 @@ class _DialogItemAvulsoState extends State<_DialogItemAvulso> {
             if (_nomeCtrl.text.trim().isEmpty) return;
             final qtd = double.tryParse(_qtdCtrl.text) ?? 1;
             final unit = double.tryParse(_precoCtrl.text);
-            final desconto = double.tryParse(_descontoCtrl.text) ?? 0;
+            final precoComDesconto = double.tryParse(_descontoCtrl.text);
             double? total;
             if (unit != null) {
               final subtotal = unit * qtd;
-              total = (subtotal - desconto) < 0 ? 0 : (subtotal - desconto);
+              if (precoComDesconto != null && precoComDesconto > 0 && precoComDesconto < unit) {
+                total = precoComDesconto * qtd;
+              } else {
+                total = subtotal;
+              }
             }
             Navigator.pop(
               context,

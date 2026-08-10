@@ -15,11 +15,18 @@ class _LevantamentoScreenState extends State<LevantamentoScreen> {
   List<Produto> _produtos = [];
   final Map<int, TextEditingController> _ctrls = {};
   bool _salvando = false;
+  Map<String, dynamic>? _listaAberta;
 
   @override
   void initState() {
     super.initState();
     _carregar();
+    _checarListaAberta();
+  }
+
+  Future<void> _checarListaAberta() async {
+    final lista = await DatabaseHelper.instance.getListaAberta();
+    if (mounted) setState(() => _listaAberta = lista);
   }
 
   Future<void> _carregar() async {
@@ -100,7 +107,7 @@ class _LevantamentoScreenState extends State<LevantamentoScreen> {
       appBar: AppBar(title: const Text('Levantamento de Estoque')),
       body: Column(children: [
         Container(
-          margin: const EdgeInsets.all(12),
+          margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: const Color(0xFFE6F1FB),
@@ -118,6 +125,27 @@ class _LevantamentoScreenState extends State<LevantamentoScreen> {
             ),
           ]),
         ),
+        if (_listaAberta != null)
+          Container(
+            margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppTheme.warningBg,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFFAC775)),
+            ),
+            child: Row(children: [
+              const Icon(Icons.info_outline, color: AppTheme.warning, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Já existe uma lista em andamento ("${_listaAberta!['descricao']}"). '
+                  'Pra adicionar itens nela, use o botão "+ Adicionar item" dentro da lista.',
+                  style: const TextStyle(color: AppTheme.warning, fontSize: 12.5),
+                ),
+              ),
+            ]),
+          ),
         Expanded(
           child: _produtos.isEmpty
               ? const Center(child: Text('Nenhum produto cadastrado'))
@@ -144,12 +172,18 @@ class _LevantamentoScreenState extends State<LevantamentoScreen> {
         Padding(
           padding: const EdgeInsets.all(12),
           child: ElevatedButton.icon(
-            onPressed: _salvando ? null : _gerarLista,
+            onPressed: (_salvando || _listaAberta != null) ? null : _gerarLista,
             icon: const Icon(Icons.shopping_cart_outlined),
-            label: Text(_salvando ? 'Gerando...' : 'Gerar Lista de Compras'),
+            label: Text(_salvando
+                ? 'Gerando...'
+                : _listaAberta != null
+                    ? 'Lista em andamento'
+                    : 'Gerar Lista de Compras'),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primary,
               foregroundColor: Colors.white,
+              disabledBackgroundColor: Colors.grey.shade300,
+              disabledForegroundColor: Colors.grey.shade600,
               minimumSize: const Size.fromHeight(50),
             ),
           ),

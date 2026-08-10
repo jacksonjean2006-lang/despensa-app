@@ -697,9 +697,13 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
   double get _qtd          => double.tryParse(_qtdCtrl.text)   ?? 1;
   double get _precoUnit    => double.tryParse(_precoCtrl.text) ?? 0;
   double get _subtotal     => _qtd > 0 ? _precoUnit * _qtd : 0;
-  double get _desconto     => double.tryParse(_descontoCtrl.text) ?? 0;
-  double get _precoTotal   =>
-      (_subtotal - _desconto) < 0 ? 0 : (_subtotal - _desconto);
+  // Preço com desconto por unidade (o que aparece na etiqueta da promoção,
+  // ex: "acima de 3un sai por R$28,50 cada") - o app calcula o desconto
+  // sozinho a partir disso, sem o usuário precisar fazer conta.
+  double get _precoComDesconto => double.tryParse(_descontoCtrl.text) ?? 0;
+  bool   get _temDesconto  => _precoComDesconto > 0 && _precoComDesconto < _precoUnit;
+  double get _desconto     => _temDesconto ? _subtotal - (_precoComDesconto * _qtd) : 0;
+  double get _precoTotal   => _temDesconto ? (_precoComDesconto * _qtd) : _subtotal;
 
   Future<void> _salvarLocal() async {
     if (_novoLocalCtrl.text.trim().isEmpty) return;
@@ -722,16 +726,22 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
   void _confirmar() {
     final unitario = double.tryParse(_precoCtrl.text);
     final qtd      = double.tryParse(_qtdCtrl.text) ?? widget.item.quantidade;
-    final desconto = double.tryParse(_descontoCtrl.text) ?? 0;
+    final precoComDesconto = double.tryParse(_descontoCtrl.text);
     final localNome = _locais
         .where((l) => l.id == _localId)
         .map((l) => l.nome)
         .firstOrNull;
 
     double? total;
+    double? desconto;
     if (unitario != null) {
       final subtotal = unitario * qtd;
-      total = (subtotal - desconto) < 0 ? 0 : (subtotal - desconto);
+      if (precoComDesconto != null && precoComDesconto > 0 && precoComDesconto < unitario) {
+        total = precoComDesconto * qtd;
+        desconto = subtotal - total;
+      } else {
+        total = subtotal;
+      }
     }
 
     Navigator.pop(
@@ -740,7 +750,7 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
         quantidade:    qtd,
         precoTotal:    total,
         precoUnitario: unitario,
-        desconto:      desconto > 0 ? desconto : null,
+        desconto:      desconto,
         localId:       _localId,
         localNome:     localNome,
       ),
@@ -825,13 +835,15 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
             ),
 
           const SizedBox(height: 10),
-          // Desconto por quantidade (opcional)
+          // Preço com desconto por quantidade (opcional) - o app calcula o
+          // desconto sozinho, só diga o preço que sai comprando em quantidade
           TextField(
             controller:   _descontoCtrl,
-            decoration:   const InputDecoration(
-                labelText: 'Desconto por quantidade (opcional)',
+            decoration:   InputDecoration(
+                labelText: 'Preço com desconto (opcional)',
                 prefixText: 'R\$ ',
-                helperText: 'Ex: comprou mais e ganhou desconto no total'),
+                suffixText: '/${widget.item.unidade}',
+                helperText: 'Ex: acima dessa qtd, sai por esse valor cada'),
             keyboardType: TextInputType.number,
           ),
 
