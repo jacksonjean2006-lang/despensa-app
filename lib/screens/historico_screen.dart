@@ -111,7 +111,7 @@ class _HistoricoScreenState extends State<HistoricoScreen>
 
 // ─── ABA 1: Visão Geral ───────────────────────────────────────────────────────
 class _AbaVisaoGeral extends StatefulWidget {
-  const _AbaVisaoGeral();
+  const _AbaVisaoGeral({super.key});
   @override
   State<_AbaVisaoGeral> createState() => _AbaVisaoGeralState();
 }
@@ -370,7 +370,7 @@ class _CardUltimoPreco extends StatelessWidget {
 
 // ─── ABA 2: Gastos por Mês ────────────────────────────────────────────────────
 class _AbaGastos extends StatefulWidget {
-  const _AbaGastos();
+  const _AbaGastos({super.key});
   @override
   State<_AbaGastos> createState() => _AbaGastosState();
 }
@@ -646,7 +646,7 @@ class _StatCard extends StatelessWidget {
 
 // ─── ABA 3: Por Produto (busca) ───────────────────────────────────────────────
 class _AbaProdutos extends StatefulWidget {
-  const _AbaProdutos();
+  const _AbaProdutos({super.key});
   @override
   State<_AbaProdutos> createState() => _AbaProdutosState();
 }
@@ -1155,7 +1155,7 @@ class _StatDetalhe extends StatelessWidget {
 
 // ─── ABA 4: Listas (todas as listas, abertas e finalizadas) ─────────────────
 class _AbaListas extends StatefulWidget {
-  const _AbaListas();
+  const _AbaListas({super.key});
   @override
   State<_AbaListas> createState() => _AbaListasState();
 }
