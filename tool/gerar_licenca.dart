@@ -23,7 +23,8 @@ Future<void> main(List<String> args) async {
 
   final email = args[0];
   final telefone = args[1];
-  final validade = args.length > 2 ? args[2] : null;
+  final validadeRaw = args.length > 2 ? args[2].trim() : '';
+  final validade = validadeRaw.isEmpty ? null : validadeRaw;
 
   final chavePrivadaArquivo = File('tool/chave_privada.txt');
   if (!await chavePrivadaArquivo.exists()) {

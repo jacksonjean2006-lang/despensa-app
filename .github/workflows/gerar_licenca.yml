@@ -1,0 +1,37 @@
+name: Gerar Licença
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: 'E-mail do cliente'
+        required: true
+      telefone:
+        description: 'Telefone do cliente'
+        required: true
+      validade:
+        description: 'Validade AAAA-MM-DD (deixe vazio se não tiver)'
+        required: false
+
+jobs:
+  gerar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.0'
+          channel: 'stable'
+
+      - name: Instalar dependências
+        run: flutter pub get
+
+      - name: Escrever chave privada (só existe durante essa execução, nunca é salva no repositório)
+        run: echo "${{ secrets.CHAVE_PRIVADA_LICENCA }}" > tool/chave_privada.txt
+
+      - name: Gerar licença
+        run: dart run tool/gerar_licenca.dart "${{ inputs.email }}" "${{ inputs.telefone }}" "${{ inputs.validade }}"
