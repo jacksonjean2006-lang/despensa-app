@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import '../database/database_helper.dart';
 import '../theme.dart';
 import '../utils/atalho_tela_inicial.dart';
+import '../utils/licenca.dart';
 import 'importar_lista_screen.dart';
 
 class ConfiguracoesScreen extends StatefulWidget {
@@ -20,6 +21,12 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
   bool _processando = false;
 
   Future<void> _fazerBackup() async {
+    if (!Licenca.podeUsarBackup) {
+      final ir = await Licenca.mostrarBloqueio(context,
+          'Backup é um recurso da versão completa. Ative sua licença pra fazer backup dos seus dados.');
+      if (ir) _ativarLicenca();
+      return;
+    }
     setState(() => _processando = true);
     try {
       final backup = await DatabaseHelper.instance.exportarBackupCompleto();
@@ -49,6 +56,12 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
       '${_2d(d.day)}/${_2d(d.month)}/${d.year} ${_2d(d.hour)}:${_2d(d.minute)}';
 
   Future<void> _restaurarBackup() async {
+    if (!Licenca.podeUsarBackup) {
+      final ir = await Licenca.mostrarBloqueio(context,
+          'Restaurar backup é um recurso da versão completa. Ative sua licença pra usar.');
+      if (ir) _ativarLicenca();
+      return;
+    }
     final resultado = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['json'],
@@ -127,6 +140,100 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
     );
   }
 
+  Future<void> _ativarLicenca() async {
+    final codigoCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
+    final telefoneCtrl = TextEditingController();
+    final dados = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Ativar licença completa'),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text(
+                'Cole o código de licença e confirme o e-mail e telefone usados na compra.',
+                style: TextStyle(fontSize: 13)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: codigoCtrl,
+              autofocus: true,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                  labelText: 'Código de licença', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(labelText: 'Seu e-mail'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: telefoneCtrl,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(labelText: 'Seu telefone'),
+            ),
+          ]),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
+            child: const Text('Ativar'),
+          ),
+        ],
+      ),
+    );
+    if (dados != true || codigoCtrl.text.trim().isEmpty) return;
+
+    final payload = await Licenca.ativar(
+      codigoCtrl.text,
+      emailDigitado: emailCtrl.text,
+      telefoneDigitado: telefoneCtrl.text,
+    );
+    if (!mounted) return;
+    if (payload != null) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Licença ativada com sucesso!'),
+            backgroundColor: AppTheme.success),
+      );
+    } else {
+      _mostrarErro(
+          'Código inválido, ou o e-mail/telefone não conferem com essa licença.');
+    }
+  }
+
+  Future<void> _desativarLicenca() async {
+    final confirmou = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Remover licença?'),
+        content: const Text('O app volta pra versão limitada.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.danger, foregroundColor: Colors.white),
+            child: const Text('Remover'),
+          ),
+        ],
+      ),
+    );
+    if (confirmou == true) {
+      await Licenca.desativar();
+      if (mounted) setState(() {});
+    }
+  }
+
   Future<void> _fixarNaTelaInicial() async {
     final ok = await AtalhoTelaInicial.fixarNaTelaInicial();
     if (!mounted) return;
@@ -173,10 +280,14 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
                 child: ListTile(
                   leading: const Icon(Icons.backup_outlined, color: AppTheme.primary),
                   title: const Text('Fazer backup'),
-                  subtitle: const Text(
-                      'Gera um arquivo com tudo (produtos, listas, histórico) pra guardar ou enviar',
-                      style: TextStyle(fontSize: 12)),
-                  trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                  subtitle: Text(
+                      Licenca.podeUsarBackup
+                          ? 'Gera um arquivo com tudo (produtos, listas, histórico) pra guardar ou enviar'
+                          : 'Recurso da versão completa',
+                      style: const TextStyle(fontSize: 12)),
+                  trailing: Licenca.podeUsarBackup
+                      ? const Icon(Icons.chevron_right, color: Colors.grey)
+                      : const Icon(Icons.lock_outline, color: Colors.grey, size: 18),
                   onTap: _fazerBackup,
                 ),
               ),
@@ -185,11 +296,40 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
                 child: ListTile(
                   leading: const Icon(Icons.restore_outlined, color: AppTheme.warning),
                   title: const Text('Restaurar backup'),
-                  subtitle: const Text(
-                      'Substitui TODOS os dados atuais pelos de um arquivo de backup',
-                      style: TextStyle(fontSize: 12)),
-                  trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                  subtitle: Text(
+                      Licenca.podeUsarBackup
+                          ? 'Substitui TODOS os dados atuais pelos de um arquivo de backup'
+                          : 'Recurso da versão completa',
+                      style: const TextStyle(fontSize: 12)),
+                  trailing: Licenca.podeUsarBackup
+                      ? const Icon(Icons.chevron_right, color: Colors.grey)
+                      : const Icon(Icons.lock_outline, color: Colors.grey, size: 18),
                   onTap: _restaurarBackup,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _secao('LICENÇA'),
+              Card(
+                child: ListTile(
+                  leading: Icon(
+                      Licenca.ativa ? Icons.verified_outlined : Icons.key_outlined,
+                      color: Licenca.ativa ? AppTheme.success : AppTheme.primary),
+                  title: Text(Licenca.ativa
+                      ? 'Versão completa ativada'
+                      : 'Ativar licença completa'),
+                  subtitle: Text(
+                      Licenca.ativa
+                          ? 'Licenciado para ${Licenca.email} · desde ${Licenca.emitidoEm}'
+                          : 'Você está na versão limitada',
+                      style: const TextStyle(fontSize: 12)),
+                  trailing: Licenca.ativa
+                      ? IconButton(
+                          icon: const Icon(Icons.close, color: Colors.grey),
+                          tooltip: 'Remover licença',
+                          onPressed: _desativarLicenca,
+                        )
+                      : const Icon(Icons.chevron_right, color: Colors.grey),
+                  onTap: Licenca.ativa ? null : _ativarLicenca,
                 ),
               ),
               const SizedBox(height: 16),

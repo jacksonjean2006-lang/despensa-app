@@ -4,6 +4,7 @@ import '../models/produto.dart';
 import '../models/categoria.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../utils/licenca.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
@@ -33,6 +34,18 @@ class _ProdutosScreenState extends State<ProdutosScreen> {
   List<Produto> get _filtrados => _catFiltro == null
       ? _produtos
       : _produtos.where((p) => p.categoriaId == _catFiltro).toList();
+
+  Future<void> _novoProduto() async {
+    if (!Licenca.podeAdicionarProduto(_produtos.length)) {
+      await Licenca.mostrarBloqueio(context,
+          'A versão grátis permite cadastrar até ${Licenca.limiteProdutos} produtos. '
+          'Ative sua licença pra cadastrar sem limites.');
+      return;
+    }
+    await Navigator.push(context, MaterialPageRoute(
+        builder: (_) => CadastroProdutoScreen(cats: _cats)));
+    await _carregar(); // recarrega imediatamente ao voltar
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,17 +77,23 @@ class _ProdutosScreenState extends State<ProdutosScreen> {
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: 'Novo produto',
-            onPressed: () async {
-              await Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => CadastroProdutoScreen(cats: _cats)));
-              await _carregar(); // recarrega imediatamente ao voltar
-            },
+            onPressed: _novoProduto,
           ),
         ],
       ),
       body: RefreshIndicator(
         onRefresh: _carregar,
         child: Column(children: [
+          if (!Licenca.ativa)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              color: AppTheme.warningBg,
+              child: Text(
+                '${_produtos.length}/${Licenca.limiteProdutos} produtos da versão grátis',
+                style: const TextStyle(fontSize: 12, color: AppTheme.warning),
+              ),
+            ),
           // Filtro por categoria
           SizedBox(
             height: 42,
@@ -270,6 +289,12 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
   }
 
   Future<void> _novaCategoria() async {
+    if (!Licenca.podeCriarCategoriaOuUnidade) {
+      await Licenca.mostrarBloqueio(context,
+          'Criar categorias novas é um recurso da versão completa. '
+          'Você pode continuar usando as categorias já existentes normalmente.');
+      return;
+    }
     final nomeCtrl  = TextEditingController();
     String icone = '📦';
     await showDialog(
@@ -466,6 +491,12 @@ class _UnidadesScreenState extends State<UnidadesScreen> {
   }
 
   Future<void> _novaUnidade() async {
+    if (!Licenca.podeCriarCategoriaOuUnidade) {
+      await Licenca.mostrarBloqueio(context,
+          'Criar unidades de medida novas é um recurso da versão completa. '
+          'Você pode continuar usando as unidades já existentes normalmente.');
+      return;
+    }
     final ctrl = TextEditingController();
     await showDialog(
       context: context,
@@ -645,6 +676,21 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
 
   Future<void> _salvar() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // Confere de novo o limite (rede de segurança, caso tenha chegado
+    // aqui por outro caminho sem passar pela checagem da tela de lista)
+    if (widget.produto == null) {
+      final atual = await DatabaseHelper.instance.getProdutos();
+      if (!Licenca.podeAdicionarProduto(atual.length)) {
+        if (mounted) {
+          await Licenca.mostrarBloqueio(context,
+              'A versão grátis permite cadastrar até ${Licenca.limiteProdutos} produtos. '
+              'Ative sua licença pra cadastrar sem limites.');
+        }
+        return;
+      }
+    }
+
     setState(() => _salvando = true);
     final p = Produto(
       id:            widget.produto?.id,

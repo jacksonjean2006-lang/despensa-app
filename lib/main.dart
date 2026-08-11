@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'splash_screen.dart';
 import 'theme.dart';
+import 'utils/licenca.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  Licenca.carregar(); // carrega em paralelo, não precisa bloquear a splash
   runApp(const MyApp());
 }
 

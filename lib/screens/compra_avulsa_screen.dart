@@ -6,6 +6,7 @@ import '../models/historico_compra.dart';
 import '../models/lista_item.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../utils/licenca.dart';
 
 // ─── Modelo local de item da compra avulsa ────────────────────────────────────
 class _ItemAvulso {
@@ -557,6 +558,8 @@ class _DialogItemAvulsoState extends State<_DialogItemAvulso> {
   final _qtdCtrl   = TextEditingController(text: '1');
   final _precoCtrl = TextEditingController();
   final _descontoCtrl = TextEditingController();
+  final _qtdMinimaCtrl = TextEditingController();
+  bool _temPromo = false;
   String _unidade  = 'un';
   List<String> _unidades  = ['kg', 'g', 'L', 'ml', 'un', 'cx', 'pct'];
 
@@ -574,13 +577,16 @@ class _DialogItemAvulsoState extends State<_DialogItemAvulso> {
     return qtd > 0 ? unit * qtd : 0;
   }
 
+  double get _qtdAtual => double.tryParse(_qtdCtrl.text) ?? 1;
   double get _precoUnit => double.tryParse(_precoCtrl.text) ?? 0;
   double get _precoComDesconto => double.tryParse(_descontoCtrl.text) ?? 0;
-  bool   get _temDesconto => _precoComDesconto > 0 && _precoComDesconto < _precoUnit;
-  double get _precoTotalCalc {
-    final qtd = double.tryParse(_qtdCtrl.text) ?? 1;
-    return _temDesconto ? _precoComDesconto * qtd : _subtotalCalc;
-  }
+  double get _qtdMinima => double.tryParse(_qtdMinimaCtrl.text) ?? 0;
+  bool   get _temDesconto => _temPromo &&
+      _precoComDesconto > 0 &&
+      _precoComDesconto < _precoUnit &&
+      _qtdAtual >= _qtdMinima;
+  double get _precoTotalCalc =>
+      _temDesconto ? _precoComDesconto * _qtdAtual : _subtotalCalc;
 
   @override
   Widget build(BuildContext context) {
@@ -621,17 +627,48 @@ class _DialogItemAvulsoState extends State<_DialogItemAvulso> {
           keyboardType: TextInputType.number,
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: _descontoCtrl,
-          decoration: InputDecoration(
-              labelText: 'Preço com desconto (opcional)',
-              prefixText: 'R\$ ',
-              suffixText: '/$_unidade',
-              helperText: 'Ex: acima dessa qtd, sai por esse valor cada'),
-          keyboardType: TextInputType.number,
-          onChanged: (_) => setState(() {}),
+        const SizedBox(height: 4),
+        CheckboxListTile(
+          value: _temPromo,
+          onChanged: (v) => setState(() {
+            _temPromo = v ?? false;
+            if (!_temPromo) {
+              _descontoCtrl.clear();
+              _qtdMinimaCtrl.clear();
+            }
+          }),
+          controlAffinity: ListTileControlAffinity.leading,
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: const Text('Tem desconto por quantidade',
+              style: TextStyle(fontSize: 13.5)),
         ),
+        if (_temPromo)
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _qtdMinimaCtrl,
+                decoration: InputDecoration(
+                    labelText: 'Qtd mínima', suffixText: _unidade, isDense: true),
+                keyboardType: TextInputType.number,
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              flex: 2,
+              child: TextField(
+                controller: _descontoCtrl,
+                decoration: InputDecoration(
+                    labelText: 'Preço com desconto',
+                    prefixText: 'R\$ ',
+                    suffixText: '/$_unidade',
+                    isDense: true),
+                keyboardType: TextInputType.number,
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+          ]),
         if (_precoTotalCalc > 0)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -651,23 +688,13 @@ class _DialogItemAvulsoState extends State<_DialogItemAvulso> {
             if (_nomeCtrl.text.trim().isEmpty) return;
             final qtd = double.tryParse(_qtdCtrl.text) ?? 1;
             final unit = double.tryParse(_precoCtrl.text);
-            final precoComDesconto = double.tryParse(_descontoCtrl.text);
-            double? total;
-            if (unit != null) {
-              final subtotal = unit * qtd;
-              if (precoComDesconto != null && precoComDesconto > 0 && precoComDesconto < unit) {
-                total = precoComDesconto * qtd;
-              } else {
-                total = subtotal;
-              }
-            }
             Navigator.pop(
               context,
               _ItemAvulso(
                 nome:          _nomeCtrl.text.trim(),
                 unidade:       _unidade,
                 quantidade:    qtd,
-                precoTotal:    total,
+                precoTotal:    unit != null ? _precoTotalCalc : null,
                 precoUnitario: unit,
               ),
             );
@@ -710,6 +737,13 @@ class _DialogEditarItemState extends State<_DialogEditarItem> {
   }
 
   Future<void> _incluirNoCadastro() async {
+    final produtos = await DatabaseHelper.instance.getProdutos();
+    if (!Licenca.podeAdicionarProduto(produtos.length)) {
+      await Licenca.mostrarBloqueio(context,
+          'A versão grátis permite cadastrar até ${Licenca.limiteProdutos} produtos. '
+          'Ative sua licença pra cadastrar sem limites.');
+      return;
+    }
     setState(() => _cadastrando = true);
     try {
       final id = await DatabaseHelper.instance.incluirAvulsoNoCadastro(

@@ -659,6 +659,8 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
   late TextEditingController _qtdCtrl;
   late TextEditingController _precoCtrl;
   late TextEditingController _descontoCtrl;
+  late TextEditingController _qtdMinimaCtrl;
+  bool _temPromo = false;
   int? _localId;
   bool _adicionandoLocal = false;
   final _novoLocalCtrl = TextEditingController();
@@ -675,13 +677,14 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
             .toString());
     _precoCtrl = TextEditingController(
         text: widget.anterior?.precoUnitario?.toString() ?? '');
-    _descontoCtrl = TextEditingController(
-        text: (widget.anterior?.desconto != null && widget.anterior!.desconto! > 0)
-            ? widget.anterior!.desconto.toString() : '');
+    _descontoCtrl = TextEditingController();
+    _qtdMinimaCtrl = TextEditingController();
+    _temPromo = widget.anterior?.desconto != null && widget.anterior!.desconto! > 0;
     _localId  = widget.anterior?.localId;
     _qtdCtrl.addListener(()  => setState(() {}));
     _precoCtrl.addListener(() => setState(() {}));
     _descontoCtrl.addListener(() => setState(() {}));
+    _qtdMinimaCtrl.addListener(() => setState(() {}));
   }
 
   @override
@@ -689,6 +692,7 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
     _qtdCtrl.dispose();
     _precoCtrl.dispose();
     _descontoCtrl.dispose();
+    _qtdMinimaCtrl.dispose();
     _novoLocalCtrl.dispose();
     _novoRefCtrl.dispose();
     super.dispose();
@@ -699,9 +703,14 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
   double get _subtotal     => _qtd > 0 ? _precoUnit * _qtd : 0;
   // Preço com desconto por unidade (o que aparece na etiqueta da promoção,
   // ex: "acima de 3un sai por R$28,50 cada") - o app calcula o desconto
-  // sozinho a partir disso, sem o usuário precisar fazer conta.
+  // sozinho a partir disso. Só vale se a checkbox de promoção estiver
+  // marcada e a quantidade comprada bater a mínima exigida.
   double get _precoComDesconto => double.tryParse(_descontoCtrl.text) ?? 0;
-  bool   get _temDesconto  => _precoComDesconto > 0 && _precoComDesconto < _precoUnit;
+  double get _qtdMinima     => double.tryParse(_qtdMinimaCtrl.text) ?? 0;
+  bool   get _temDesconto   => _temPromo &&
+      _precoComDesconto > 0 &&
+      _precoComDesconto < _precoUnit &&
+      _qtd >= _qtdMinima;
   double get _desconto     => _temDesconto ? _subtotal - (_precoComDesconto * _qtd) : 0;
   double get _precoTotal   => _temDesconto ? (_precoComDesconto * _qtd) : _subtotal;
 
@@ -726,31 +735,18 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
   void _confirmar() {
     final unitario = double.tryParse(_precoCtrl.text);
     final qtd      = double.tryParse(_qtdCtrl.text) ?? widget.item.quantidade;
-    final precoComDesconto = double.tryParse(_descontoCtrl.text);
     final localNome = _locais
         .where((l) => l.id == _localId)
         .map((l) => l.nome)
         .firstOrNull;
 
-    double? total;
-    double? desconto;
-    if (unitario != null) {
-      final subtotal = unitario * qtd;
-      if (precoComDesconto != null && precoComDesconto > 0 && precoComDesconto < unitario) {
-        total = precoComDesconto * qtd;
-        desconto = subtotal - total;
-      } else {
-        total = subtotal;
-      }
-    }
-
     Navigator.pop(
       context,
       _PrecoEditado(
         quantidade:    qtd,
-        precoTotal:    total,
+        precoTotal:    unitario != null ? _precoTotal : null,
         precoUnitario: unitario,
-        desconto:      desconto,
+        desconto:      _desconto > 0 ? _desconto : null,
         localId:       _localId,
         localNome:     localNome,
       ),
@@ -834,18 +830,58 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
               ),
             ),
 
-          const SizedBox(height: 10),
-          // Preço com desconto por quantidade (opcional) - o app calcula o
-          // desconto sozinho, só diga o preço que sai comprando em quantidade
-          TextField(
-            controller:   _descontoCtrl,
-            decoration:   InputDecoration(
-                labelText: 'Preço com desconto (opcional)',
-                prefixText: 'R\$ ',
-                suffixText: '/${widget.item.unidade}',
-                helperText: 'Ex: acima dessa qtd, sai por esse valor cada'),
-            keyboardType: TextInputType.number,
+          const SizedBox(height: 4),
+          // Checkbox: só mostra os campos de promoção por quantidade se
+          // o produto realmente tiver esse tipo de desconto
+          CheckboxListTile(
+            value: _temPromo,
+            onChanged: (v) => setState(() {
+              _temPromo = v ?? false;
+              if (!_temPromo) {
+                _descontoCtrl.clear();
+                _qtdMinimaCtrl.clear();
+              }
+            }),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: const Text('Tem desconto por quantidade',
+                style: TextStyle(fontSize: 13.5)),
           ),
+          if (_temPromo) ...[
+            Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _qtdMinimaCtrl,
+                  decoration: InputDecoration(
+                      labelText: 'Qtd mínima',
+                      suffixText: widget.item.unidade,
+                      isDense: true),
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: _descontoCtrl,
+                  decoration: InputDecoration(
+                      labelText: 'Preço com desconto',
+                      prefixText: 'R\$ ',
+                      suffixText: '/${widget.item.unidade}',
+                      isDense: true),
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+            ]),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Ex: a partir de ${_qtdMinima > 0 ? formatarQtd(_qtdMinima, widget.item.unidade) : "X"}, cada uma sai por esse valor',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              ),
+            ),
+          ],
 
           const SizedBox(height: 12),
           const Divider(),

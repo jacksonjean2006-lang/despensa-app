@@ -5,6 +5,7 @@ import '../models/historico_compra.dart';
 import '../models/produto.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../utils/licenca.dart';
 import 'lista_compras_screen.dart';
 
 // ─── Tela principal com abas ──────────────────────────────────────────────────
@@ -17,6 +18,7 @@ class HistoricoScreen extends StatefulWidget {
 class _HistoricoScreenState extends State<HistoricoScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabs;
+  int _refreshKey = 0;
 
   @override
   void initState() {
@@ -60,9 +62,10 @@ class _HistoricoScreenState extends State<HistoricoScreen>
           const SnackBar(content: Text(
               'Movimentação limpa. Produtos e categorias mantidos.')),
         );
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HistoricoScreen()),
-        );
+        // Em vez de navegar (o que perderia a barra de navegação quando
+        // essa tela está aberta como aba), só troca a key das abas pra
+        // forçar elas recarregarem os dados do zero.
+        setState(() => _refreshKey++);
       }
     }
   }
@@ -95,11 +98,11 @@ class _HistoricoScreenState extends State<HistoricoScreen>
       ),
       body: TabBarView(
         controller: _tabs,
-        children: const [
-          _AbaVisaoGeral(),
-          _AbaGastos(),
-          _AbaProdutos(),
-          _AbaListas(),
+        children: [
+          _AbaVisaoGeral(key: ValueKey('visao_$_refreshKey')),
+          _AbaGastos(key: ValueKey('gastos_$_refreshKey')),
+          _AbaProdutos(key: ValueKey('produtos_$_refreshKey')),
+          _AbaListas(key: ValueKey('listas_$_refreshKey')),
         ],
       ),
     );
@@ -264,6 +267,15 @@ class _AbaVisaoGeralState extends State<_AbaVisaoGeral>
       ),
     );
     if (incluir == true) {
+      final produtos = await DatabaseHelper.instance.getProdutos();
+      if (!Licenca.podeAdicionarProduto(produtos.length)) {
+        if (mounted) {
+          await Licenca.mostrarBloqueio(context,
+              'A versão grátis permite cadastrar até ${Licenca.limiteProdutos} produtos. '
+              'Ative sua licença pra cadastrar sem limites.');
+        }
+        return;
+      }
       await DatabaseHelper.instance.incluirAvulsoNoCadastro(
         item['produto_nome'] as String,
         item['unidade'] as String? ?? 'un',

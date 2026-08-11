@@ -3,6 +3,10 @@ android/key.properties
 *.jks
 *.keystore
 
+# Chave PRIVADA do sistema de licença - NUNCA commitar (se vazar, qualquer
+# um pode gerar licença válida pro app)
+tool/chave_privada.txt
+
 # Flutter/Dart
 .dart_tool/
 .packages
