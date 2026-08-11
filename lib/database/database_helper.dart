@@ -21,7 +21,7 @@ class DatabaseHelper {
     final path = join(await getDatabasesPath(), 'despensa.db');
     return openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -66,6 +66,15 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE lista_itens ADD COLUMN local_id INTEGER REFERENCES locais_compra(id)');
       }
     }
+    if (oldVersion < 5) {
+      // Coluna pra guardar o desconto aplicado ao finalizar a compra
+      // (pra poder mostrar depois no histórico/detalhe da lista)
+      final cols = await db.rawQuery("PRAGMA table_info(listas)");
+      final jaTem = cols.any((c) => c['name'] == 'desconto');
+      if (!jaTem) {
+        await db.execute('ALTER TABLE listas ADD COLUMN desconto REAL');
+      }
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -103,7 +112,8 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         descricao TEXT NOT NULL,
         criado_em TEXT NOT NULL,
-        finalizado_em TEXT
+        finalizado_em TEXT,
+        desconto REAL
       )
     ''');
     await db.execute('''
@@ -320,11 +330,14 @@ class DatabaseHelper {
     });
   }
 
-  Future<void> finalizarLista(int listaId) async {
+  Future<void> finalizarLista(int listaId, {double? desconto}) async {
     final d = await db;
     await d.update(
       'listas',
-      {'finalizado_em': DateTime.now().toIso8601String()},
+      {
+        'finalizado_em': DateTime.now().toIso8601String(),
+        if (desconto != null && desconto > 0) 'desconto': desconto,
+      },
       where: 'id = ?',
       whereArgs: [listaId],
     );

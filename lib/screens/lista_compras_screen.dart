@@ -19,6 +19,7 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
   int? _listaId;
   String _listaDesc = '';
   String? _finalizadoEm;
+  double? _descontoSalvo;
   List<ListaItem> _itens = [];
   bool _carregando = true;
 
@@ -51,6 +52,7 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
       _listaId      = lista['id'] as int;
       _listaDesc    = lista['descricao'] as String;
       _finalizadoEm = lista['finalizado_em'] as String?;
+      _descontoSalvo = (lista['desconto'] as num?)?.toDouble();
       _itens        = await DatabaseHelper.instance.getItensDaLista(_listaId!);
     }
     setState(() => _carregando = false);
@@ -222,10 +224,14 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
     for (final item in _itens.where((i) => i.marcado)) {
       // Lê o preço direto do item (já persistido no banco desde que foi
       // registrado no dialog) - não depende de nenhum estado em memória.
-      if (item.produtoId != null) {
+      // Registra tanto itens cadastrados (produtoId) quanto avulsos
+      // (nomeAvulso) - antes só os cadastrados entravam no histórico, o
+      // que fazia o total de "Gastos" ficar menor que o real.
+      if (item.produtoId != null || item.nomeAvulso != null) {
         await DatabaseHelper.instance.registrarCompra(HistoricoCompra(
           listaId:            _listaId,
           produtoId:          item.produtoId,
+          nomeAvulso:         item.produtoId == null ? item.nomeAvulso : null,
           localId:            item.localId ?? localIdGeral,
           quantidadeComprada: item.quantidade,
           precoTotal:         item.precoTotal != null
@@ -236,7 +242,7 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
       }
     }
 
-    await DatabaseHelper.instance.finalizarLista(_listaId!);
+    await DatabaseHelper.instance.finalizarLista(_listaId!, desconto: descontoFinal);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -315,23 +321,40 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
             width:   double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             color:   AppTheme.primary.withOpacity(0.08),
-            child: Row(children: [
-              const Icon(Icons.shopping_bag_outlined,
-                  size: 18, color: AppTheme.primary),
-              const SizedBox(width: 8),
-              Text(
-                '$_itensComPreco item${_itensComPreco != 1 ? 's' : ''} com preço',
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
-              ),
-              const Spacer(),
-              Text(
-                'Total: ${formatarMoeda(_totalCompra)}',
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.primary,
+            child: Column(children: [
+              Row(children: [
+                const Icon(Icons.shopping_bag_outlined,
+                    size: 18, color: AppTheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  '$_itensComPreco item${_itensComPreco != 1 ? 's' : ''} com preço',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
                 ),
-              ),
+                const Spacer(),
+                Text(
+                  'Total: ${formatarMoeda(_totalCompra)}',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primary,
+                  ),
+                ),
+              ]),
+              if (_descontoSalvo != null && _descontoSalvo! > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Row(children: [
+                    const Spacer(),
+                    Text(
+                      'Desconto aplicado: - ${formatarMoeda(_descontoSalvo!)}  '
+                      '·  Pago: ${formatarMoeda(_totalCompra - _descontoSalvo!)}',
+                      style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.success),
+                    ),
+                  ]),
+                ),
             ]),
           ),
 

@@ -1239,7 +1239,8 @@ class _AbaListasState extends State<_AbaListas>
                 aberta
                     ? 'Em andamento · criada em ${formatarData(l['criado_em'] as String)}'
                     : 'Finalizada em ${formatarData(l['finalizado_em'] as String)}'
-                      '${(l['total'] as num?) != null ? ' · ${formatarMoeda((l['total'] as num).toDouble())}' : ''}',
+                      '${(l['total'] as num?) != null ? ' · ${formatarMoeda((l['total'] as num).toDouble())}' : ''}'
+                      '${(l['desconto'] as num?) != null && (l['desconto'] as num) > 0 ? ' (desconto de ${formatarMoeda((l['desconto'] as num).toDouble())})' : ''}',
                 style: const TextStyle(fontSize: 12),
               ),
               trailing: aberta
