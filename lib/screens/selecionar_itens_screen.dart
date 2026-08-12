@@ -80,13 +80,9 @@ class _SelecionarItensScreenState extends State<SelecionarItensScreen> {
       if (!mounted) return;
 
       if (adicionados == 0) {
-        setState(() => _salvando = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(_selecionados.length == jaNaLista.length
-              ? 'Esses itens já estavam na lista'
-              : 'Nenhum item foi adicionado (verifique se já estavam na lista)'),
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Esses itens já estavam na lista'),
         ));
-        return;
       }
 
       Navigator.pushReplacement(

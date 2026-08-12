@@ -5,6 +5,7 @@ import '../models/categoria.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../utils/licenca.dart';
+import 'leitor_codigo_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
@@ -47,12 +48,67 @@ class _ProdutosScreenState extends State<ProdutosScreen> {
     await _carregar(); // recarrega imediatamente ao voltar
   }
 
+  Future<void> _buscarPorCodigoBarras() async {
+    final codigo = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+          builder: (_) => const LeitorCodigoScreen(
+              titulo: 'Buscar produto pelo código')),
+    );
+    if (codigo == null || !mounted) return;
+
+    final produto = await DatabaseHelper.instance.buscarProdutoPorCodigoBarras(codigo);
+    if (!mounted) return;
+
+    if (produto != null) {
+      await Navigator.push(context, MaterialPageRoute(
+          builder: (_) => CadastroProdutoScreen(cats: _cats, produto: produto)));
+      _carregar();
+    } else {
+      final cadastrar = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Produto não encontrado'),
+          content: Text('Nenhum produto com o código "$codigo" está cadastrado. Quer cadastrar um novo já com esse código?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
+              child: const Text('Cadastrar'),
+            ),
+          ],
+        ),
+      );
+      if (cadastrar == true) {
+        if (!Licenca.podeAdicionarProduto(_produtos.length)) {
+          if (mounted) {
+            await Licenca.mostrarBloqueio(context,
+                'A versão grátis permite cadastrar até ${Licenca.limiteProdutos} produtos. '
+                'Ative sua licença pra cadastrar sem limites.');
+          }
+          return;
+        }
+        if (!mounted) return;
+        await Navigator.push(context, MaterialPageRoute(
+            builder: (_) => CadastroProdutoScreen(cats: _cats, codigoBarrasInicial: codigo)));
+        _carregar();
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Produtos'),
         actions: [
+          // Botão buscar por código de barras
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner),
+            tooltip: 'Buscar por código de barras',
+            onPressed: _buscarPorCodigoBarras,
+          ),
           // Botão gerenciar categorias
           IconButton(
             icon: const Icon(Icons.label_outline),
@@ -607,8 +663,9 @@ class _UnidadesScreenState extends State<UnidadesScreen> {
 class CadastroProdutoScreen extends StatefulWidget {
   final List<Categoria> cats;
   final Produto? produto;
+  final String? codigoBarrasInicial;
   const CadastroProdutoScreen(
-      {super.key, required this.cats, this.produto});
+      {super.key, required this.cats, this.produto, this.codigoBarrasInicial});
 
   @override
   State<CadastroProdutoScreen> createState() =>
@@ -617,7 +674,7 @@ class CadastroProdutoScreen extends StatefulWidget {
 
 class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
   final _formKey = GlobalKey<FormState>();
-  late TextEditingController _nome, _marca, _consumo, _minimo;
+  late TextEditingController _nome, _marca, _consumo, _minimo, _codigoBarras;
   String _unidade = 'un';
   int? _catId;
   bool _ativo = true;
@@ -640,6 +697,8 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
     _minimo  = TextEditingController(
         text: p != null && p.estoqueMinimo > 0
             ? p.estoqueMinimo.toString() : '');
+    _codigoBarras = TextEditingController(
+        text: p?.codigoBarras ?? widget.codigoBarrasInicial ?? '');
     _unidade  = p?.unidade ?? 'un';
     _catId    = p?.categoriaId;
     _ativo    = p?.ativo ?? true;
@@ -664,14 +723,48 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
   void dispose() {
     _nome.dispose(); _marca.dispose();
     _consumo.dispose(); _minimo.dispose();
+    _codigoBarras.dispose();
     super.dispose();
   }
 
   Future<void> _pickFoto() async {
+    final origem = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.camera_alt_outlined, color: AppTheme.primary),
+            title: const Text('Tirar foto'),
+            onTap: () => Navigator.pop(context, ImageSource.camera),
+          ),
+          ListTile(
+            leading: const Icon(Icons.photo_library_outlined, color: AppTheme.primary),
+            title: const Text('Escolher da galeria'),
+            onTap: () => Navigator.pop(context, ImageSource.gallery),
+          ),
+        ]),
+      ),
+    );
+    if (origem == null) return;
+
     final picker = ImagePicker();
     final img = await picker.pickImage(
-        source: ImageSource.gallery, imageQuality: 70);
+      source: origem,
+      imageQuality: 75,
+      maxWidth: 1200,
+      maxHeight: 1200,
+    );
     if (img != null) setState(() => _fotoPath = img.path);
+  }
+
+  Future<void> _escanearCodigoBarras() async {
+    final codigo = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+          builder: (_) => const LeitorCodigoScreen(
+              titulo: 'Escanear código do produto')),
+    );
+    if (codigo != null) setState(() => _codigoBarras.text = codigo);
   }
 
   Future<void> _salvar() async {
@@ -704,6 +797,7 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
       ativo:         _ativo,
       criadoEm:      widget.produto?.criadoEm ??
                      DateTime.now().toIso8601String(),
+      codigoBarras:  _codigoBarras.text.trim().isEmpty ? null : _codigoBarras.text.trim(),
     );
     await DatabaseHelper.instance.salvarProduto(p);
     if (mounted) Navigator.pop(context);
@@ -758,24 +852,41 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
             GestureDetector(
               onTap: _pickFoto,
               child: Container(
-                height: 100,
+                height: 190,
+                width: double.infinity,
                 decoration: BoxDecoration(
                   color:        Colors.grey.shade100,
                   borderRadius: BorderRadius.circular(12),
                   border:       Border.all(color: Colors.grey.shade300),
                 ),
                 child: _fotoPath != null
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.file(File(_fotoPath!),
-                            fit: BoxFit.cover))
+                    ? Stack(fit: StackFit.expand, children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.file(File(_fotoPath!),
+                              fit: BoxFit.cover),
+                        ),
+                        Positioned(
+                          right: 8,
+                          bottom: 8,
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.55),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Icon(Icons.edit,
+                                color: Colors.white, size: 18),
+                          ),
+                        ),
+                      ])
                     : const Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.camera_alt_outlined,
-                              size: 32, color: Colors.grey),
+                              size: 36, color: Colors.grey),
                           SizedBox(height: 6),
-                          Text('Adicionar foto',
+                          Text('Tirar foto ou escolher da galeria',
                               style: TextStyle(color: Colors.grey)),
                         ],
                       ),
@@ -801,6 +912,18 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
                     decoration: const InputDecoration(
                         labelText: 'Marca (opcional)'),
                     textCapitalization: TextCapitalization.words,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _codigoBarras,
+                    decoration: InputDecoration(
+                      labelText: 'Código de barras (opcional)',
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.qr_code_scanner, color: AppTheme.primary),
+                        tooltip: 'Escanear código',
+                        onPressed: _escanearCodigoBarras,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<int>(

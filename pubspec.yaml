@@ -21,6 +21,7 @@ dependencies:
   share_plus: ^7.2.2
   file_picker: ^8.1.2
   cryptography: ^2.7.0
+  mobile_scanner: ^5.2.3
 
 dev_dependencies:
   flutter_test:

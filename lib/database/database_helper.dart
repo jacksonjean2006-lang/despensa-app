@@ -21,7 +21,7 @@ class DatabaseHelper {
     final path = join(await getDatabasesPath(), 'despensa.db');
     return openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -75,6 +75,14 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE listas ADD COLUMN desconto REAL');
       }
     }
+    if (oldVersion < 6) {
+      // Código de barras/QR do produto, pra busca via leitor
+      final cols = await db.rawQuery("PRAGMA table_info(produtos)");
+      final jaTem = cols.any((c) => c['name'] == 'codigo_barras');
+      if (!jaTem) {
+        await db.execute('ALTER TABLE produtos ADD COLUMN codigo_barras TEXT');
+      }
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -96,7 +104,8 @@ class DatabaseHelper {
         categoria_id INTEGER REFERENCES categorias(id),
         marca TEXT,
         ativo INTEGER NOT NULL DEFAULT 1,
-        criado_em TEXT NOT NULL
+        criado_em TEXT NOT NULL,
+        codigo_barras TEXT
       )
     ''');
     await db.execute('''
@@ -252,6 +261,27 @@ class DatabaseHelper {
       WHERE LOWER(TRIM(p.nome)) = LOWER(TRIM(?))
       LIMIT 1
     ''', [nome]);
+    return rows.isEmpty ? null : Produto.fromMap(rows.first);
+  }
+
+  // Busca um produto pelo código de barras/QR lido na câmera
+  Future<Produto?> buscarProdutoPorCodigoBarras(String codigo) async {
+    final d = await db;
+    final rows = await d.rawQuery('''
+      SELECT p.*,
+             COALESCE((
+               SELECT quantidade FROM estoque
+               WHERE produto_id = p.id
+               ORDER BY atualizado_em DESC
+               LIMIT 1
+             ), 0) AS estoque_atual,
+             c.nome AS categoria_nome,
+             c.icone AS categoria_icone
+      FROM produtos p
+      LEFT JOIN categorias c ON c.id = p.categoria_id
+      WHERE p.codigo_barras = ?
+      LIMIT 1
+    ''', [codigo]);
     return rows.isEmpty ? null : Produto.fromMap(rows.first);
   }
 
@@ -701,12 +731,18 @@ class DatabaseHelper {
   // de compras/preços), mas MANTÉM o cadastro: produtos, categorias e locais
   // de compra. Útil pra zerar o "uso" do app sem perder o que já foi cadastrado
   // (diferente de desinstalar, que apaga tudo).
-  Future<void> limparMovimentacao() async {
+  Future<void> limparMovimentacao({bool incluirCadastro = false}) async {
     final d = await db;
     await d.delete('lista_itens');
     await d.delete('listas');
     await d.delete('historico_compras');
     await d.delete('estoque');
+    if (incluirCadastro) {
+      await d.delete('produtos');
+      await d.delete('categorias');
+      await d.delete('locais_compra');
+      await _seed(d);
+    }
   }
 
   Future<List<HistoricoCompra>> getHistoricoProdutoGrafico(int produtoId) async {

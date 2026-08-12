@@ -33,34 +33,53 @@ class _HistoricoScreenState extends State<HistoricoScreen>
   }
 
   Future<void> _confirmarLimpeza() async {
+    bool tambemCadastro = false;
     final confirmou = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Limpar movimentação?'),
-        content: const Text(
-          'Isso apaga TODO o estoque, listas e histórico de compras/preços.\n\n'
-          'Seus produtos, categorias e locais de compra cadastrados NÃO serão apagados.\n\n'
-          'Essa ação não pode ser desfeita.',
+      builder: (_) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Limpar movimentação?'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text(
+              'Isso apaga TODO o estoque, listas e histórico de compras/preços.\n\n'
+              'Essa ação não pode ser desfeita.',
+            ),
+            const SizedBox(height: 12),
+            CheckboxListTile(
+              value: tambemCadastro,
+              onChanged: (v) => setDialogState(() => tambemCadastro = v ?? false),
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text(
+                  'Também apagar produtos, categorias e locais cadastrados',
+                  style: TextStyle(fontSize: 13)),
+              subtitle: const Text(
+                  'Útil só pra testes - volta o app pro cadastro padrão',
+                  style: TextStyle(fontSize: 11)),
+            ),
+          ]),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancelar')),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.danger, foregroundColor: Colors.white),
+              child: const Text('Limpar tudo'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.danger, foregroundColor: Colors.white),
-            child: const Text('Limpar tudo'),
-          ),
-        ],
       ),
     );
     if (confirmou == true) {
-      await DatabaseHelper.instance.limparMovimentacao();
+      await DatabaseHelper.instance.limparMovimentacao(incluirCadastro: tambemCadastro);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text(
-              'Movimentação limpa. Produtos e categorias mantidos.')),
+          SnackBar(content: Text(tambemCadastro
+              ? 'Tudo limpo, incluindo produtos e categorias.'
+              : 'Movimentação limpa. Produtos e categorias mantidos.')),
         );
         // Em vez de navegar (o que perderia a barra de navegação quando
         // essa tela está aberta como aba), só troca a key das abas pra

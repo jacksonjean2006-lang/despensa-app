@@ -9,6 +9,7 @@ class Produto {
   final String? marca;
   final bool ativo;
   final String criadoEm;
+  final String? codigoBarras;
 
   // Campos extras vindos de JOIN
   double? estoqueAtual;
@@ -26,6 +27,7 @@ class Produto {
     this.marca,
     this.ativo = true,
     required this.criadoEm,
+    this.codigoBarras,
     this.estoqueAtual,
     this.categoriaNome,
     this.categoriaIcone,
@@ -56,6 +58,7 @@ class Produto {
         'marca': marca,
         'ativo': ativo ? 1 : 0,
         'criado_em': criadoEm,
+        'codigo_barras': codigoBarras,
       };
 
   factory Produto.fromMap(Map<String, dynamic> m) => Produto(
@@ -69,6 +72,7 @@ class Produto {
         marca: m['marca'],
         ativo: (m['ativo'] ?? 1) == 1,
         criadoEm: m['criado_em'] ?? '',
+        codigoBarras: m['codigo_barras'],
         estoqueAtual: m['estoque_atual'] != null
             ? (m['estoque_atual']).toDouble()
             : null,
