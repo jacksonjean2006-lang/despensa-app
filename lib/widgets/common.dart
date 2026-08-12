@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../theme.dart';
@@ -50,8 +51,13 @@ class FotoOuEmoji extends StatelessWidget {
         child: fotoPath != null && fotoPath!.isNotEmpty
             ? ClipRRect(
                 borderRadius: BorderRadius.circular(size * 0.23),
-                child: Image.asset(fotoPath!,
-                    width: size, height: size, fit: BoxFit.cover))
+                child: Image.file(
+                  File(fotoPath!),
+                  width: size, height: size, fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Text(
+                      icone ?? '📦',
+                      style: TextStyle(fontSize: size * 0.5)),
+                ))
             : Text(icone ?? '📦',
                 style: TextStyle(fontSize: size * 0.5)),
       ),

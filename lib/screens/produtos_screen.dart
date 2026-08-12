@@ -5,8 +5,12 @@ import '../models/categoria.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../utils/licenca.dart';
+import '../utils/busca_produto_codigo.dart';
 import 'leitor_codigo_screen.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 import 'dart:io';
 
 class ProdutosScreen extends StatefulWidget {
@@ -57,43 +61,50 @@ class _ProdutosScreenState extends State<ProdutosScreen> {
     );
     if (codigo == null || !mounted) return;
 
-    final produto = await DatabaseHelper.instance.buscarProdutoPorCodigoBarras(codigo);
+    // Primeiro procura no cadastro local (rápido, funciona offline)
+    final resultado = await buscarProdutoPorCodigo(codigo);
     if (!mounted) return;
 
-    if (produto != null) {
+    if (resultado.encontrouNoCadastro) {
       await Navigator.push(context, MaterialPageRoute(
-          builder: (_) => CadastroProdutoScreen(cats: _cats, produto: produto)));
+          builder: (_) => CadastroProdutoScreen(cats: _cats, produto: resultado.produtoCadastrado)));
       _carregar();
-    } else {
-      final cadastrar = await showDialog<bool>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Produto não encontrado'),
-          content: Text('Nenhum produto com o código "$codigo" está cadastrado. Quer cadastrar um novo já com esse código?'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
-              child: const Text('Cadastrar'),
-            ),
-          ],
-        ),
-      );
-      if (cadastrar == true) {
-        if (!Licenca.podeAdicionarProduto(_produtos.length)) {
-          if (mounted) {
-            await Licenca.mostrarBloqueio(context,
-                'A versão grátis permite cadastrar até ${Licenca.limiteProdutos} produtos. '
-                'Ative sua licença pra cadastrar sem limites.');
-          }
-          return;
+      return;
+    }
+
+    // Não achou no cadastro - já tentou a internet dentro do helper acima
+    final nomeSugerido = resultado.nomeSugeridoInternet;
+    final cadastrar = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Produto não cadastrado'),
+        content: Text(nomeSugerido != null
+            ? 'Não está no seu cadastro, mas achamos "$nomeSugerido" pela internet. Cadastrar esse produto?'
+            : 'Código "$codigo" não encontrado no cadastro nem na internet. Cadastrar mesmo assim?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
+            child: const Text('Cadastrar'),
+          ),
+        ],
+      ),
+    );
+    if (cadastrar == true) {
+      if (!Licenca.podeAdicionarProduto(_produtos.length)) {
+        if (mounted) {
+          await Licenca.mostrarBloqueio(context,
+              'A versão grátis permite cadastrar até ${Licenca.limiteProdutos} produtos. '
+              'Ative sua licença pra cadastrar sem limites.');
         }
-        if (!mounted) return;
-        await Navigator.push(context, MaterialPageRoute(
-            builder: (_) => CadastroProdutoScreen(cats: _cats, codigoBarrasInicial: codigo)));
-        _carregar();
+        return;
       }
+      if (!mounted) return;
+      await Navigator.push(context, MaterialPageRoute(
+          builder: (_) => CadastroProdutoScreen(
+              cats: _cats, codigoBarrasInicial: codigo, nomeInicial: nomeSugerido)));
+      _carregar();
     }
   }
 
@@ -664,8 +675,9 @@ class CadastroProdutoScreen extends StatefulWidget {
   final List<Categoria> cats;
   final Produto? produto;
   final String? codigoBarrasInicial;
+  final String? nomeInicial;
   const CadastroProdutoScreen(
-      {super.key, required this.cats, this.produto, this.codigoBarrasInicial});
+      {super.key, required this.cats, this.produto, this.codigoBarrasInicial, this.nomeInicial});
 
   @override
   State<CadastroProdutoScreen> createState() =>
@@ -689,7 +701,7 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
     super.initState();
     _carregarUnidades();
     final p = widget.produto;
-    _nome    = TextEditingController(text: p?.nome ?? '');
+    _nome    = TextEditingController(text: p?.nome ?? widget.nomeInicial ?? '');
     _marca   = TextEditingController(text: p?.marca ?? '');
     _consumo = TextEditingController(
         text: p != null && p.consumoMensal > 0
@@ -750,11 +762,43 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
     final picker = ImagePicker();
     final img = await picker.pickImage(
       source: origem,
-      imageQuality: 75,
-      maxWidth: 1200,
-      maxHeight: 1200,
+      imageQuality: 90,
+      maxWidth: 1600,
+      maxHeight: 1600,
     );
-    if (img != null) setState(() => _fotoPath = img.path);
+    if (img == null) return;
+
+    // Deixa o usuário recortar/ajustar a foto pra caber melhor no espaço
+    final recortada = await ImageCropper().cropImage(
+      sourcePath: img.path,
+      compressQuality: 80,
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Ajustar foto',
+          toolbarColor: AppTheme.primaryDark,
+          toolbarWidgetColor: Colors.white,
+          activeControlsWidgetColor: AppTheme.primary,
+          lockAspectRatio: false,
+        ),
+        IOSUiSettings(title: 'Ajustar foto'),
+      ],
+    );
+    if (recortada == null) return;
+
+    // Copia pra uma pasta permanente do app - a pasta de cache onde a
+    // foto foi salva pode ser limpa pelo Android a qualquer momento (por
+    // exemplo, quando o usuário limpa o cache do app ou o sistema libera
+    // espaço), o que faria a foto sumir mesmo com o produto intacto.
+    final pastaFotos = await getApplicationDocumentsDirectory();
+    final pastaFotosProdutos = Directory('${pastaFotos.path}/fotos_produtos');
+    if (!await pastaFotosProdutos.exists()) {
+      await pastaFotosProdutos.create(recursive: true);
+    }
+    final novoNome = '${const Uuid().v4()}.jpg';
+    final destino = await File(recortada.path)
+        .copy('${pastaFotosProdutos.path}/$novoNome');
+
+    setState(() => _fotoPath = destino.path);
   }
 
   Future<void> _escanearCodigoBarras() async {

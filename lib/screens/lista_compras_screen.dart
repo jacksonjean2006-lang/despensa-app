@@ -7,6 +7,10 @@ import '../models/historico_compra.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../utils/lista_compartilhar.dart';
+import '../utils/licenca.dart';
+import '../utils/busca_produto_codigo.dart';
+import 'leitor_codigo_screen.dart';
+import 'produtos_screen.dart';
 
 class ListaComprasScreen extends StatefulWidget {
   final int? listaId;
@@ -100,6 +104,96 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
     if (_readOnly) return;
     await DatabaseHelper.instance.deletarItem(item.id!);
     setState(() => _itens.remove(item));
+  }
+
+  Future<void> _escanearItem() async {
+    final codigo = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+          builder: (_) => const LeitorCodigoScreen(
+              titulo: 'Escanear item da compra')),
+    );
+    if (codigo == null || !mounted) return;
+
+    // Primeiro procura no cadastro (rápido, funciona offline)
+    final resultado = await buscarProdutoPorCodigo(codigo);
+    if (!mounted) return;
+
+    if (resultado.encontrouNoCadastro) {
+      final produto = resultado.produtoCadastrado!;
+      final itemNaLista = _itens.where((i) => i.produtoId == produto.id).firstOrNull;
+
+      if (itemNaLista != null) {
+        // Já está nessa lista - abre direto o preço, sem precisar buscar
+        // pela descrição
+        _registrarPreco(itemNaLista);
+        return;
+      }
+
+      // Está cadastrado mas não faz parte dessa lista ainda
+      final add = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Produto não está nessa lista'),
+          content: Text('"${produto.nome}" está cadastrado, mas não faz parte dessa lista. Adicionar?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
+              child: const Text('Adicionar'),
+            ),
+          ],
+        ),
+      );
+      if (add == true && _listaId != null) {
+        await DatabaseHelper.instance.adicionarItem(ListaItem(
+          listaId:    _listaId!,
+          produtoId:  produto.id,
+          quantidade: 1,
+          unidade:    produto.unidade,
+        ));
+        _carregar();
+      }
+      return;
+    }
+
+    // Não achou no cadastro - o helper já tentou a internet
+    final nomeSugerido = resultado.nomeSugeridoInternet;
+    final cadastrar = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Produto não cadastrado'),
+        content: Text(nomeSugerido != null
+            ? 'Não está no seu cadastro, mas achamos "$nomeSugerido" pela internet. Cadastrar esse produto?'
+            : 'Código "$codigo" não encontrado no cadastro nem na internet. Cadastrar mesmo assim?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
+            child: const Text('Cadastrar'),
+          ),
+        ],
+      ),
+    );
+    if (cadastrar == true && mounted) {
+      final produtosAtuais = await DatabaseHelper.instance.getProdutos();
+      if (!Licenca.podeAdicionarProduto(produtosAtuais.length)) {
+        if (mounted) {
+          await Licenca.mostrarBloqueio(context,
+              'A versão grátis permite cadastrar até ${Licenca.limiteProdutos} produtos. '
+              'Ative sua licença pra cadastrar sem limites.');
+        }
+        return;
+      }
+      final cats = await DatabaseHelper.instance.getCategorias();
+      if (!mounted) return;
+      await Navigator.push(context, MaterialPageRoute(
+          builder: (_) => CadastroProdutoScreen(
+              cats: cats, codigoBarrasInicial: codigo, nomeInicial: nomeSugerido)));
+      _carregar();
+    }
   }
 
   Future<void> _renomear() async {
@@ -362,27 +456,43 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
         if (_itens.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            child: TextField(
-              controller: _buscaCtrl,
-              decoration: InputDecoration(
-                hintText:   'Buscar item...',
-                prefixIcon: const Icon(Icons.search, size: 20),
-                suffixIcon: _busca.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.close, size: 18),
-                        onPressed: () => _buscaCtrl.clear(),
-                      )
-                    : null,
-                isDense:     true,
-                filled:      true,
-                fillColor:   Colors.grey.shade100,
-                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide:   BorderSide.none,
+            child: Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _buscaCtrl,
+                  decoration: InputDecoration(
+                    hintText:   'Buscar item...',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    suffixIcon: _busca.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.close, size: 18),
+                            onPressed: () => _buscaCtrl.clear(),
+                          )
+                        : null,
+                    isDense:     true,
+                    filled:      true,
+                    fillColor:   Colors.grey.shade100,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide:   BorderSide.none,
+                    ),
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(width: 6),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.qr_code_scanner, color: AppTheme.primary),
+                  tooltip: 'Escanear código de barras',
+                  onPressed: _escanearItem,
+                ),
+              ),
+            ]),
           ),
 
         Expanded(
