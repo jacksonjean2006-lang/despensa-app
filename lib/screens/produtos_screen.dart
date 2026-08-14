@@ -740,6 +740,18 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
   }
 
   Future<void> _pickFoto() async {
+    // Só permite foto depois do produto já estar salvo (tem um id). Se
+    // deixar tirar foto num produto novo ainda não salvo, o fluxo de
+    // câmera + recorte está reiniciando o app no meio do caminho e o
+    // cadastro se perde inteiro - assim evita isso.
+    if (widget.produto == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(
+            'Salve o produto primeiro. Depois abra ele de novo pra adicionar uma foto.')),
+      );
+      return;
+    }
+
     final origem = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (_) => SafeArea(
@@ -924,14 +936,21 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
                           ),
                         ),
                       ])
-                    : const Column(
+                    : Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.camera_alt_outlined,
+                          Icon(
+                              editando
+                                  ? Icons.camera_alt_outlined
+                                  : Icons.lock_outline,
                               size: 36, color: Colors.grey),
-                          SizedBox(height: 6),
-                          Text('Tirar foto ou escolher da galeria',
-                              style: TextStyle(color: Colors.grey)),
+                          const SizedBox(height: 6),
+                          Text(
+                              editando
+                                  ? 'Tirar foto ou escolher da galeria'
+                                  : 'Salve o produto primeiro pra adicionar foto',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.grey)),
                         ],
                       ),
               ),
