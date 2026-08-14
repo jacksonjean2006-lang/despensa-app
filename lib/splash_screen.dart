@@ -1,7 +1,5 @@
-import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'splash_image.dart';
 import 'screens/main_navigation.dart';
 import 'theme.dart';
 
@@ -35,11 +33,15 @@ class _SplashScreenState extends State<SplashScreen> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(24),
-              child: Image.memory(
-                base64Decode(splashImageBase64),
+              child: Image.asset(
+                'assets/splash/icon.png',
                 width: 220,
                 height: 220,
                 fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => const Icon(
+                    Icons.shopping_cart_outlined,
+                    size: 100,
+                    color: AppTheme.primary),
               ),
             ),
             const SizedBox(height: 24),
