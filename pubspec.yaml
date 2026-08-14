@@ -19,7 +19,7 @@ dependencies:
   fl_chart: ^0.68.0
   cupertino_icons: ^1.0.6
   share_plus: ^7.2.2
-  file_picker: ^8.1.2
+  file_picker: ">=8.0.7 <8.1.0"
   cryptography: ^2.7.0
   mobile_scanner: ^5.2.3
   image_cropper: 7.1.0
