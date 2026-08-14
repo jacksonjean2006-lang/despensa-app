@@ -62,9 +62,9 @@ class _RecortarFotoScreenState extends State<RecortarFotoScreen> {
         interactive: true,
         onCropped: (result) {
           switch (result) {
-            case CropSuccess(:final croppedImage):
+            case CropResult.success(:final croppedImage):
               Navigator.pop(context, croppedImage);
-            case CropFailure():
+            case CropResult.error():
               setState(() => _processando = false);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Não deu pra recortar essa foto')),
