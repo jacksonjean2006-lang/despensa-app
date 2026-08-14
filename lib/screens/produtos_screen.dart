@@ -7,11 +7,12 @@ import '../widgets/common.dart';
 import '../utils/licenca.dart';
 import '../utils/busca_produto_codigo.dart';
 import 'leitor_codigo_screen.dart';
+import 'recortar_foto_screen.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:image_cropper/image_cropper.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:io';
+import 'dart:typed_data';
 
 class ProdutosScreen extends StatefulWidget {
   const ProdutosScreen({super.key});
@@ -780,35 +781,30 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
     );
     if (img == null) return;
 
-    // Deixa o usuário recortar/ajustar a foto pra caber melhor no espaço
-    final recortada = await ImageCropper().cropImage(
-      sourcePath: img.path,
-      compressQuality: 80,
-      uiSettings: [
-        AndroidUiSettings(
-          toolbarTitle: 'Ajustar foto',
-          toolbarColor: AppTheme.primaryDark,
-          toolbarWidgetColor: Colors.white,
-          activeControlsWidgetColor: AppTheme.primary,
-          lockAspectRatio: false,
-        ),
-        IOSUiSettings(title: 'Ajustar foto'),
-      ],
+    final bytesOriginais = await File(img.path).readAsBytes();
+    if (!mounted) return;
+
+    // Recorte roda dentro do próprio app (sem abrir tela nativa separada) -
+    // evita o Android matar o app em segundo plano durante o recorte, o
+    // que antes fazia o app "reiniciar" e perder a foto/cadastro.
+    final bytesRecortados = await Navigator.push<Uint8List>(
+      context,
+      MaterialPageRoute(
+          builder: (_) => RecortarFotoScreen(imagemOriginal: bytesOriginais)),
     );
-    if (recortada == null) return;
+    if (bytesRecortados == null || !mounted) return;
 
     // Copia pra uma pasta permanente do app - a pasta de cache onde a
-    // foto foi salva pode ser limpa pelo Android a qualquer momento (por
-    // exemplo, quando o usuário limpa o cache do app ou o sistema libera
-    // espaço), o que faria a foto sumir mesmo com o produto intacto.
+    // foto original foi salva pode ser limpa pelo Android a qualquer
+    // momento, o que faria a foto sumir mesmo com o produto intacto.
     final pastaFotos = await getApplicationDocumentsDirectory();
     final pastaFotosProdutos = Directory('${pastaFotos.path}/fotos_produtos');
     if (!await pastaFotosProdutos.exists()) {
       await pastaFotosProdutos.create(recursive: true);
     }
     final novoNome = '${const Uuid().v4()}.jpg';
-    final destino = await File(recortada.path)
-        .copy('${pastaFotosProdutos.path}/$novoNome');
+    final destino = File('${pastaFotosProdutos.path}/$novoNome');
+    await destino.writeAsBytes(bytesRecortados);
 
     setState(() => _fotoPath = destino.path);
   }
