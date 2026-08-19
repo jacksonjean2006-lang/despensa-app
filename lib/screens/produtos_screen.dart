@@ -8,6 +8,7 @@ import '../utils/licenca.dart';
 import '../utils/busca_produto_codigo.dart';
 import 'leitor_codigo_screen.dart';
 import 'recortar_foto_screen.dart';
+import 'camera_captura_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
@@ -772,16 +773,29 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
     );
     if (origem == null) return;
 
-    final picker = ImagePicker();
-    final img = await picker.pickImage(
-      source: origem,
-      imageQuality: 90,
-      maxWidth: 1600,
-      maxHeight: 1600,
-    );
-    if (img == null) return;
-
-    final bytesOriginais = await File(img.path).readAsBytes();
+    Uint8List bytesOriginais;
+    if (origem == ImageSource.camera) {
+      // Câmera própria do app (não abre o app de Câmera do sistema) - evita
+      // o Android matar o app em segundo plano por falta de memória
+      // enquanto o app de Câmera (pesado) está em primeiro plano, que
+      // estava causando o app "reiniciar" e perder o cadastro/foto.
+      final fotoPath = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(builder: (_) => const CameraCapturaScreen()),
+      );
+      if (fotoPath == null || !mounted) return;
+      bytesOriginais = await File(fotoPath).readAsBytes();
+    } else {
+      final picker = ImagePicker();
+      final img = await picker.pickImage(
+        source: origem,
+        imageQuality: 90,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
+      if (img == null) return;
+      bytesOriginais = await File(img.path).readAsBytes();
+    }
     if (!mounted) return;
 
     // Recorte roda dentro do próprio app (sem abrir tela nativa separada) -
