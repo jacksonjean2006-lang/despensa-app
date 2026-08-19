@@ -24,6 +24,14 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!-- Desativa o Impeller nesta Activity: o motor de renderização novo do
+                 Flutter tem bugs conhecidos com o preview da camera no Android (a
+                 imagem aparece minuscula/cortada/no canto em vez de tela cheia).
+                 Ver https://github.com/flutter/flutter/issues/149294 e relacionados. -->
+            <meta-data
+              android:name="io.flutter.embedding.android.EnableImpeller"
+              android:value="false"
+              />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
