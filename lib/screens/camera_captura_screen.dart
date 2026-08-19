@@ -89,6 +89,39 @@ class _CameraCapturaScreenState extends State<CameraCapturaScreen>
     }
   }
 
+  /// Monta o preview forçando manualmente o tamanho/escala, em vez de
+  /// confiar só no Positioned.fill. Em alguns aparelhos (principalmente
+  /// certos Android físicos), a textura nativa da câmera não estica pra
+  /// preencher o widget sozinha e some renderizada minúscula num canto.
+  /// Usando LayoutBuilder + FittedBox(cover) com o tamanho real do preview
+  /// reportado pelo controller, forçamos o escalonamento manualmente.
+  Widget _buildPreview() {
+    final controller = _controller!;
+    final previewSize = controller.value.previewSize;
+    if (previewSize == null) {
+      return CameraPreview(controller);
+    }
+    // previewSize normalmente vem em orientação "paisagem" (largura maior
+    // que altura) independente da orientação do celular, por isso
+    // invertemos width/height pra bater com o preview em pé.
+    final previewW = previewSize.height;
+    final previewH = previewSize.width;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return ClipRect(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: previewW,
+              height: previewH,
+              child: CameraPreview(controller),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -119,7 +152,7 @@ class _CameraCapturaScreenState extends State<CameraCapturaScreen>
                   return Stack(
                     alignment: Alignment.bottomCenter,
                     children: [
-                      Positioned.fill(child: CameraPreview(_controller!)),
+                      Positioned.fill(child: _buildPreview()),
                       Padding(
                         padding: const EdgeInsets.only(bottom: 28),
                         child: GestureDetector(
