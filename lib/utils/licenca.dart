@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:cryptography/cryptography.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:android_id/android_id.dart';
 
 /// Sistema de licença do app.
 ///
@@ -63,7 +64,15 @@ class Licenca {
         _normalizarEmail(emailDigitado);
     final telefoneOk = _normalizarTelefone(payload['telefone'] as String? ?? '') ==
         _normalizarTelefone(telefoneDigitado);
-    if (!emailOk || !telefoneOk) return null;
+
+    // Trava por aparelho: se a licença tiver um idAparelho gravado, só
+    // ativa se bater com o ID deste celular. Licenças antigas (geradas
+    // antes dessa trava existir) não têm esse campo, então continuam
+    // funcionando normalmente em qualquer aparelho.
+    final idGravado = (payload['idAparelho'] as String?)?.trim() ?? '';
+    final idOk = idGravado.isEmpty || idGravado == await idAparelho();
+
+    if (!emailOk || !telefoneOk || !idOk) return null;
 
     _payload = payload;
     final arquivo = await _arquivoLicenca();
@@ -74,6 +83,18 @@ class Licenca {
   static String _normalizarEmail(String s) => s.trim().toLowerCase();
   static String _normalizarTelefone(String s) =>
       s.replaceAll(RegExp(r'[^0-9]'), '');
+
+  /// ID único do aparelho (Settings.Secure.ANDROID_ID). Muda se o cliente
+  /// trocar de celular ou fizer reset de fábrica - nesses casos precisa
+  /// gerar uma licença nova pra ele.
+  static Future<String> idAparelho() async {
+    try {
+      final id = await const AndroidId().getId();
+      return id ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
 
   static Future<void> desativar() async {
     _payload = null;

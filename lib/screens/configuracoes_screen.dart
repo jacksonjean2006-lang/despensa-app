@@ -333,12 +333,16 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
     final nome = nomeCtrl.text.trim();
     final email = emailCtrl.text.trim();
     final telefone = telefoneCtrl.text.trim();
+    final idAparelho = await Licenca.idAparelho();
 
+    final saudacao = _saudacaoPorHorario();
     final assunto = 'Solicitação de licença completa - Minha Despensa';
-    final corpo = 'Olá! Gostaria de adquirir a versão completa do app Minha Despensa.\n\n'
+    final corpo = '$saudacao, $nome!\n\n'
+        'Gostaria de adquirir a versão completa do app Minha Despensa.\n\n'
         'Nome completo: $nome\n'
         'E-mail: $email\n'
-        'Telefone (com DDD): $telefone\n';
+        'Telefone (com DDD): $telefone\n'
+        'ID do aparelho: ${idAparelho.isEmpty ? '(não foi possível obter)' : idAparelho}\n';
 
     final uri = Uri(
       scheme: 'mailto',
@@ -351,6 +355,14 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
     if (!abriu) {
       _mostrarErro('Não achei um app de e-mail instalado nesse celular.');
     }
+  }
+
+  /// Saudação de acordo com o horário atual do aparelho.
+  String _saudacaoPorHorario() {
+    final hora = DateTime.now().hour;
+    if (hora >= 5 && hora < 12) return 'Bom dia';
+    if (hora >= 12 && hora < 18) return 'Boa tarde';
+    return 'Boa noite';
   }
 
   String _construirQueryEmail(Map<String, String> parametros) {
