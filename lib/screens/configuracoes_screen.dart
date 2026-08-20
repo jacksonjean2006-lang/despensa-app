@@ -57,10 +57,22 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
       '${_2d(d.day)}/${_2d(d.month)}/${d.year} ${_2d(d.hour)}:${_2d(d.minute)}';
 
   Future<void> _restaurarBackup() async {
-    if (!Licenca.podeUsarBackup) {
-      final ir = await Licenca.mostrarBloqueio(context,
-          'Restaurar backup é um recurso da versão completa. Ative sua licença pra usar.');
-      if (ir) _ativarLicenca();
+    if (!Licenca.podeRestaurarBackup) {
+      final venceu = Licenca.ativa && Licenca.expirada;
+      final mensagem = venceu
+          ? 'Sua licença venceu. Renove pra voltar a restaurar backups.'
+          : 'Restaurar backup é um recurso da versão completa. Ative sua licença pra usar.';
+      final ir = await Licenca.mostrarBloqueio(context, mensagem,
+          botao: venceu ? 'Renovar licença' : 'Ativar licença');
+      if (ir) {
+        // Se já tem licença (só que vencida), leva pro fluxo de renovação;
+        // se nunca teve, leva pro fluxo normal de ativar.
+        if (venceu) {
+          _solicitarLicenca();
+        } else {
+          _ativarLicenca();
+        }
+      }
       return;
     }
     final resultado = await FilePicker.platform.pickFiles(
@@ -419,11 +431,13 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
                   leading: const Icon(Icons.restore_outlined, color: AppTheme.warning),
                   title: const Text('Restaurar backup'),
                   subtitle: Text(
-                      Licenca.podeUsarBackup
+                      Licenca.podeRestaurarBackup
                           ? 'Substitui TODOS os dados atuais pelos de um arquivo de backup'
-                          : 'Recurso da versão completa',
+                          : (Licenca.ativa && Licenca.expirada
+                              ? 'Licença vencida - renove pra restaurar backups'
+                              : 'Recurso da versão completa'),
                       style: const TextStyle(fontSize: 12)),
-                  trailing: Licenca.podeUsarBackup
+                  trailing: Licenca.podeRestaurarBackup
                       ? const Icon(Icons.chevron_right, color: Colors.grey)
                       : const Icon(Icons.lock_outline, color: Colors.grey, size: 18),
                   onTap: _restaurarBackup,
@@ -434,16 +448,24 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
               Card(
                 child: ListTile(
                   leading: Icon(
-                      Licenca.ativa ? Icons.verified_outlined : Icons.key_outlined,
-                      color: Licenca.ativa ? AppTheme.success : AppTheme.primary),
+                      Licenca.ativa
+                          ? (Licenca.expirada ? Icons.warning_amber_outlined : Icons.verified_outlined)
+                          : Icons.key_outlined,
+                      color: Licenca.ativa
+                          ? (Licenca.expirada ? AppTheme.warning : AppTheme.success)
+                          : AppTheme.primary),
                   title: Text(Licenca.ativa
-                      ? 'Versão completa ativada'
+                      ? (Licenca.expirada ? 'Versão completa - licença vencida' : 'Versão completa ativada')
                       : 'Ativar licença completa'),
                   subtitle: Text(
                       Licenca.ativa
-                          ? 'Licenciado para ${Licenca.nome ?? Licenca.email} · desde ${Licenca.emitidoEm}'
+                          ? (Licenca.expirada
+                              ? 'Venceu em ${Licenca.validade!.day.toString().padLeft(2, '0')}/${Licenca.validade!.month.toString().padLeft(2, '0')}/${Licenca.validade!.year} · entre em contato pra renovar'
+                              : 'Licenciado para ${Licenca.nome ?? Licenca.email} · desde ${Licenca.emitidoEm}')
                           : 'Você está na versão limitada',
-                      style: const TextStyle(fontSize: 12)),
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: Licenca.ativa && Licenca.expirada ? AppTheme.warning : null)),
                   trailing: Licenca.ativa
                       ? IconButton(
                           icon: const Icon(Icons.close, color: Colors.grey),
@@ -513,6 +535,18 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
                           style: OutlinedButton.styleFrom(
                               foregroundColor: AppTheme.primary,
                               side: const BorderSide(color: AppTheme.primary)),
+                        ),
+                      )
+                    else if (Licenca.expirada)
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _solicitarLicenca,
+                          icon: const Icon(Icons.autorenew),
+                          label: const Text('Renovar licença (venceu)'),
+                          style: OutlinedButton.styleFrom(
+                              foregroundColor: AppTheme.warning,
+                              side: const BorderSide(color: AppTheme.warning)),
                         ),
                       )
                     else

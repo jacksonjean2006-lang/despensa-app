@@ -33,6 +33,30 @@ class Licenca {
   static String? get emitidoEm => _payload?['emitido'] as String?;
   static String? get nome => _payload?['nome'] as String?;
 
+  /// Data de validade gravada na licença, se houver (null = licença sem
+  /// prazo, nunca vence).
+  static DateTime? get validade {
+    final raw = _payload?['validade'] as String?;
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return DateTime.parse(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// true se a licença tem validade E ela já passou. NÃO desativa nada
+  /// sozinho - a licença continua liberando os recursos normalmente,
+  /// isso serve só pra mostrar um aviso pedindo renovação.
+  static bool get expirada {
+    final v = validade;
+    if (v == null) return false;
+    // Considera o dia inteiro da validade como válido (vence à meia-noite
+    // do dia seguinte), pra não expirar de surpresa no meio do dia certo.
+    final fimDoDia = DateTime(v.year, v.month, v.day, 23, 59, 59);
+    return DateTime.now().isAfter(fimDoDia);
+  }
+
   /// Chama uma vez no início do app (ex: no main ou splash) pra carregar
   /// a licença já ativada anteriormente, se houver.
   static Future<void> carregar() async {
@@ -149,16 +173,24 @@ class Licenca {
       ativa || totalAtual < limiteProdutos;
 
   static bool get podeUsarBackup => ativa;
+
+  /// Restaurar (diferente de fazer/exportar) exige a licença EM DIA - se
+  /// vencer, para de deixar restaurar, mesmo que a pessoa desinstale e
+  /// reinstale o app ou reative o mesmo código de novo (o vencimento é
+  /// sempre recalculado comparando a data gravada no código com a data
+  /// atual do aparelho, não tem como burlar reinstalando).
+  static bool get podeRestaurarBackup => ativa && !expirada;
   static bool get podeCriarCategoriaOuUnidade => ativa;
 
   /// Mostra um dialog padrão explicando que o recurso é só da versão
-  /// completa. Retorna true se o usuário tocou em "Ativar licença" (nesse
-  /// caso quem chamou deve navegar pra tela de Configurações).
-  static Future<bool> mostrarBloqueio(BuildContext context, String motivo) async {
+  /// completa (ou que a licença venceu). Retorna true se o usuário tocou
+  /// no botão de ação (quem chamou decide pra onde navegar).
+  static Future<bool> mostrarBloqueio(BuildContext context, String motivo,
+      {String botao = 'Ativar licença'}) async {
     final ir = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Recurso da versão completa'),
+        title: Text(expirada ? 'Licença vencida' : 'Recurso da versão completa'),
         content: Text(motivo),
         actions: [
           TextButton(
@@ -166,7 +198,7 @@ class Licenca {
               child: const Text('Fechar')),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Ativar licença'),
+            child: Text(botao),
           ),
         ],
       ),
