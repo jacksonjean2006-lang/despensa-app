@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/produto.dart';
 import '../theme.dart';
+import '../utils/licenca.dart';
 import '../widgets/common.dart';
 import 'compra_avulsa_screen.dart';
 import 'levantamento_screen.dart';
@@ -129,7 +130,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final hora = DateTime.now().hour;
-    final saudacao = hora < 12 ? 'Bom dia!' : hora < 18 ? 'Boa tarde!' : 'Boa noite!';
+    final saudacaoBase = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+    // Se a licença tiver nome gravado, personaliza a saudação ("Boa
+    // tarde, Murilo!"); senão fica genérica ("Boa tarde!").
+    final primeiroNome = Licenca.ativa && (Licenca.nome ?? '').trim().isNotEmpty
+        ? Licenca.nome!.trim().split(' ').first
+        : null;
+    final saudacao =
+        primeiroNome != null ? '$saudacaoBase, $primeiroNome!' : '$saudacaoBase!';
     final precisamCompra = _produtos.where((p) => p.quantidadeComprar > 0).length;
 
     return Scaffold(

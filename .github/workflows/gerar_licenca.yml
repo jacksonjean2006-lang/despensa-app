@@ -15,6 +15,9 @@ on:
       id_aparelho:
         description: 'ID do aparelho (vem no e-mail de solicitação, deixe vazio pra não travar por aparelho)'
         required: false
+      nome:
+        description: 'Nome do cliente (aparece na saudação do app)'
+        required: false
 
 jobs:
   gerar:
@@ -37,4 +40,4 @@ jobs:
         run: echo "${{ secrets.CHAVE_PRIVADA_LICENCA }}" > tool/chave_privada.txt
 
       - name: Gerar licença
-        run: dart run tool/gerar_licenca.dart "${{ inputs.email }}" "${{ inputs.telefone }}" "${{ inputs.validade }}" "${{ inputs.id_aparelho }}"
+        run: dart run tool/gerar_licenca.dart "${{ inputs.email }}" "${{ inputs.telefone }}" "${{ inputs.validade }}" "${{ inputs.id_aparelho }}" "${{ inputs.nome }}"

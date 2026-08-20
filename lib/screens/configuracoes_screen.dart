@@ -441,7 +441,7 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
                       : 'Ativar licença completa'),
                   subtitle: Text(
                       Licenca.ativa
-                          ? 'Licenciado para ${Licenca.email} · desde ${Licenca.emitidoEm}'
+                          ? 'Licenciado para ${Licenca.nome ?? Licenca.email} · desde ${Licenca.emitidoEm}'
                           : 'Você está na versão limitada',
                       style: const TextStyle(fontSize: 12)),
                   trailing: Licenca.ativa

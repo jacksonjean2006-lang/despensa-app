@@ -31,6 +31,7 @@ class Licenca {
   static String? get email => _payload?['email'] as String?;
   static String? get telefone => _payload?['telefone'] as String?;
   static String? get emitidoEm => _payload?['emitido'] as String?;
+  static String? get nome => _payload?['nome'] as String?;
 
   /// Chama uma vez no início do app (ex: no main ou splash) pra carregar
   /// a licença já ativada anteriormente, se houver.
