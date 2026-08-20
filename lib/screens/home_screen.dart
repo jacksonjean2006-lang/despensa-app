@@ -150,9 +150,12 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: 'Configurações',
-            onPressed: () {
-              Navigator.push(context,
+            onPressed: () async {
+              await Navigator.push(context,
                   MaterialPageRoute(builder: (_) => const ConfiguracoesScreen()));
+              // Configurações pode ter mudado a licença (ativou/desativou) -
+              // recalcula a saudação e tudo mais ao voltar.
+              if (mounted) setState(() {});
             },
           ),
           IconButton(

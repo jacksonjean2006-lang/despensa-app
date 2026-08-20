@@ -503,17 +503,40 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
                       ]),
                     ),
                     const SizedBox(height: 14),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _solicitarLicenca,
-                        icon: const Icon(Icons.workspace_premium_outlined),
-                        label: const Text('Adquirir licença completa'),
-                        style: OutlinedButton.styleFrom(
-                            foregroundColor: AppTheme.primary,
-                            side: const BorderSide(color: AppTheme.primary)),
+                    if (!Licenca.ativa)
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _solicitarLicenca,
+                          icon: const Icon(Icons.workspace_premium_outlined),
+                          label: const Text('Adquirir licença completa'),
+                          style: OutlinedButton.styleFrom(
+                              foregroundColor: AppTheme.primary,
+                              side: const BorderSide(color: AppTheme.primary)),
+                        ),
+                      )
+                    else
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.success.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(children: [
+                          const Icon(Icons.verified_outlined,
+                              color: AppTheme.success, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                                'Licença completa já ativada neste aparelho',
+                                style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: AppTheme.success,
+                                    fontWeight: FontWeight.w600)),
+                          ),
+                        ]),
                       ),
-                    ),
                   ]),
                 ),
               ),
