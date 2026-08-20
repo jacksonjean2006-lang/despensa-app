@@ -1,7 +1,7 @@
 plugins {
     id "com.android.application"
     id "kotlin-android"
-    // O plugin do Flutter deve ser aplicado depois dos plugins Android e Kotlin.
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id "dev.flutter.flutter-gradle-plugin"
 }
 
@@ -16,7 +16,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.infosolutions.despensa"
-    compileSdk = 36   // 🔧 Ajustado para SDK 36
+    compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -29,9 +29,12 @@ android {
     }
 
     defaultConfig {
+        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.infosolutions.despensa"
+        // You can update the following values to match your application needs.
+        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
-        targetSdk = 36   // 🔧 Ajustado para SDK 36
+        targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
@@ -49,6 +52,9 @@ android {
 
     buildTypes {
         release {
+            // Usa a chave de release de verdade se o key.properties existir
+            // (local ou gerado no CI a partir dos secrets); senão cai pra debug
+            // (build local sem a chave configurada ainda).
             signingConfig = keystorePropertiesFile.exists()
                 ? signingConfigs.release
                 : signingConfigs.debug

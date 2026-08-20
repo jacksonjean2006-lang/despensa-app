@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../database/database_helper.dart';
 import '../theme.dart';
 import '../utils/atalho_tela_inicial.dart';
@@ -250,6 +251,115 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
     }
   }
 
+  /// Abre um formulário (nome, e-mail, telefone) e, ao confirmar, monta um
+  /// e-mail (via app de e-mail do celular) endereçado ao desenvolvedor
+  /// pedindo a licença completa. O usuário só precisa apertar "Enviar" no
+  /// próprio app de e-mail que abrir - não existe envio automático em
+  /// segundo plano, pra funcionar de forma confiável sem precisar de
+  /// servidor próprio.
+  Future<void> _solicitarLicenca() async {
+    final nomeCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
+    final telefoneCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final confirmou = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Adquirir licença completa'),
+        content: Form(
+          key: formKey,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text(
+                  'Preencha seus dados. Vamos abrir seu app de e-mail com uma '
+                  'solicitação pronta pra você enviar. O desenvolvedor responde '
+                  'com os próximos passos e a chave de liberação.',
+                  style: TextStyle(fontSize: 13)),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: nomeCtrl,
+                autofocus: true,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'Nome completo *'),
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Informe seu nome' : null,
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: emailCtrl,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(labelText: 'E-mail *'),
+                validator: (v) {
+                  final t = v?.trim() ?? '';
+                  if (t.isEmpty) return 'Informe seu e-mail';
+                  if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(t)) {
+                    return 'E-mail inválido';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: telefoneCtrl,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                    labelText: 'Telefone com DDD *', hintText: 'ex: (21) 91234-5678'),
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Informe seu telefone' : null,
+              ),
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(context, true);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
+            child: const Text('Enviar solicitação'),
+          ),
+        ],
+      ),
+    );
+    if (confirmou != true) return;
+
+    final nome = nomeCtrl.text.trim();
+    final email = emailCtrl.text.trim();
+    final telefone = telefoneCtrl.text.trim();
+
+    final assunto = 'Solicitação de licença completa - Minha Despensa';
+    final corpo = 'Olá! Gostaria de adquirir a versão completa do app Minha Despensa.\n\n'
+        'Nome completo: $nome\n'
+        'E-mail: $email\n'
+        'Telefone (com DDD): $telefone\n';
+
+    final uri = Uri(
+      scheme: 'mailto',
+      path: 'jacksonjean2006@gmail.com',
+      query: _construirQueryEmail({'subject': assunto, 'body': corpo}),
+    );
+
+    final abriu = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!mounted) return;
+    if (!abriu) {
+      _mostrarErro('Não achei um app de e-mail instalado nesse celular.');
+    }
+  }
+
+  String _construirQueryEmail(Map<String, String> parametros) {
+    return parametros.entries
+        .map((e) =>
+            '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -379,6 +489,18 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
                                 fontSize: 13, color: AppTheme.primary,
                                 decoration: TextDecoration.underline)),
                       ]),
+                    ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _solicitarLicenca,
+                        icon: const Icon(Icons.workspace_premium_outlined),
+                        label: const Text('Adquirir licença completa'),
+                        style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.primary,
+                            side: const BorderSide(color: AppTheme.primary)),
+                      ),
                     ),
                   ]),
                 ),
