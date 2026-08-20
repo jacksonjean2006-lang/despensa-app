@@ -12,6 +12,9 @@ on:
       validade:
         description: 'Validade AAAA-MM-DD (deixe vazio se não tiver)'
         required: false
+      id_aparelho:
+        description: 'ID do aparelho (vem no e-mail de solicitação, deixe vazio pra não travar por aparelho)'
+        required: false
 
 jobs:
   gerar:
@@ -34,4 +37,4 @@ jobs:
         run: echo "${{ secrets.CHAVE_PRIVADA_LICENCA }}" > tool/chave_privada.txt
 
       - name: Gerar licença
-        run: dart run tool/gerar_licenca.dart "${{ inputs.email }}" "${{ inputs.telefone }}" "${{ inputs.validade }}"
+        run: dart run tool/gerar_licenca.dart "${{ inputs.email }}" "${{ inputs.telefone }}" "${{ inputs.validade }}" "${{ inputs.id_aparelho }}"
