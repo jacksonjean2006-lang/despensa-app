@@ -563,6 +563,43 @@ class DatabaseHelper {
     return lista.isEmpty ? null : lista.first;
   }
 
+  // Pra cada mercado onde já foi registrado um preço desse produto (ou
+  // item avulso com o mesmo nome), traz o preço unitário MAIS RECENTE
+  // naquele mercado, ordenado do mais barato pro mais caro. Usado na hora
+  // de registrar o preço durante a compra, pra comparar com outros
+  // mercados sem precisar sair da tela - é só informativo, não bloqueia
+  // nada, e só aparece se já existir mais de um mercado com preço salvo.
+  Future<List<Map<String, dynamic>>> getComparativoPrecos({
+    int? produtoId,
+    String? nomeAvulso,
+  }) async {
+    if (produtoId == null && (nomeAvulso == null || nomeAvulso.isEmpty)) {
+      return [];
+    }
+    final d = await db;
+    final where = produtoId != null
+        ? 'h.produto_id = ?'
+        : 'h.produto_id IS NULL AND h.nome_avulso = ?';
+    final arg = produtoId ?? nomeAvulso;
+    final rows = await d.rawQuery('''
+      SELECT l.nome AS local_nome, h.preco_unitario, h.data
+      FROM historico_compras h
+      JOIN locais_compra l ON l.id = h.local_id
+      WHERE $where
+        AND h.preco_unitario IS NOT NULL
+        AND h.local_id IS NOT NULL
+        AND h.data = (
+          SELECT MAX(h2.data) FROM historico_compras h2
+          WHERE h2.local_id = h.local_id
+            AND h2.preco_unitario IS NOT NULL
+            AND (${produtoId != null ? 'h2.produto_id = ?' : 'h2.produto_id IS NULL AND h2.nome_avulso = ?'})
+        )
+      GROUP BY h.local_id
+      ORDER BY h.preco_unitario ASC
+    ''', [arg, arg]);
+    return rows.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
   // ─── RESUMO MENSAL ─────────────────────────────────────────
   Future<List<Map<String, dynamic>>> getResumoMensal() async {
     final d = await db;

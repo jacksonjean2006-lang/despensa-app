@@ -242,6 +242,10 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
 
   Future<void> _registrarPreco(ListaItem item) async {
     final locais = await DatabaseHelper.instance.getLocais();
+    final comparativo = await DatabaseHelper.instance.getComparativoPrecos(
+      produtoId: item.produtoId,
+      nomeAvulso: item.produtoId == null ? item.nomeAvulso : null,
+    );
     if (!mounted) return;
 
     final resultado = await showDialog<_PrecoEditado>(
@@ -249,6 +253,7 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
       builder: (_) => _DialogRegistrarPreco(
         item:      item,
         locais:    locais,
+        comparativo: comparativo,
         anterior: item.precoTotal != null
             ? _PrecoEditado(
                 quantidade: item.quantidade,
@@ -777,11 +782,13 @@ class _DialogRegistrarPreco extends StatefulWidget {
   final ListaItem item;
   final List<LocalCompra> locais;
   final _PrecoEditado? anterior;
+  final List<Map<String, dynamic>> comparativo;
 
   const _DialogRegistrarPreco({
     required this.item,
     required this.locais,
     this.anterior,
+    this.comparativo = const [],
   });
 
   @override
@@ -892,6 +899,89 @@ class _DialogRegistrarPrecoState extends State<_DialogRegistrarPreco> {
       title: Text('Preço — ${widget.item.nomeExibicao}'),
       content: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
+          // Comparativo com outros mercados onde esse produto já foi
+          // comprado antes - só aparece se existir, é puramente
+          // informativo (não bloqueia nem obriga nada). Tocar num mercado
+          // preenche o preço e o local automaticamente, pra agilizar.
+          if (widget.comparativo.isNotEmpty) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  const Icon(Icons.storefront_outlined,
+                      size: 14, color: AppTheme.primary),
+                  const SizedBox(width: 4),
+                  Text(
+                    'PREÇO REGISTRADO EM OUTROS MERCADOS',
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.primary.withOpacity(0.85),
+                        letterSpacing: 0.3),
+                  ),
+                ]),
+                const SizedBox(height: 6),
+                ...widget.comparativo.asMap().entries.map((e) {
+                  final idx   = e.key;
+                  final local = e.value['local_nome'] as String;
+                  final preco = (e.value['preco_unitario'] as num).toDouble();
+                  return InkWell(
+                    onTap: () {
+                      final match = _locais.where((l) => l.nome == local).firstOrNull;
+                      setState(() {
+                        _precoCtrl.text = preco.toString();
+                        if (match != null) _localId = match.id;
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: Row(children: [
+                        Expanded(
+                          child: Text(local,
+                              style: const TextStyle(fontSize: 13),
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                        if (idx == 0)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: AppTheme.successBg,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text('mais barato',
+                                  style: TextStyle(
+                                      fontSize: 9.5, color: AppTheme.success)),
+                            ),
+                          ),
+                        Text(
+                          '${formatarMoeda(preco)}/${widget.item.unidade}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: idx == 0 ? AppTheme.success : Colors.black87,
+                          ),
+                        ),
+                      ]),
+                    ),
+                  );
+                }),
+                const SizedBox(height: 2),
+                Text('Toque num mercado pra preencher o preço',
+                    style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
+              ]),
+            ),
+            const SizedBox(height: 12),
+          ],
+
           // Quantidade
           TextField(
             controller:   _qtdCtrl,
