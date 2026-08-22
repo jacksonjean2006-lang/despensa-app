@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: Checkout código
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -59,7 +59,14 @@ jobs:
           EOF
             echo "Chave de release configurada."
           else
-            echo "Secrets de assinatura não configurados - build vai sair assinado com a chave de debug."
+            echo "ERRO: secret KEYSTORE_BASE64 não configurado no repositório."
+            echo "Se o build seguir sem essa chave, ele sai assinado com uma chave"
+            echo "de debug ALEATÓRIA gerada nesta execução - o que muda o"
+            echo "Settings.Secure.ANDROID_ID de todo mundo que reinstalar o app"
+            echo "e quebra a validação de licença por aparelho. Configure os"
+            echo "secrets KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_PASSWORD / KEY_ALIAS"
+            echo "em Settings > Secrets and variables > Actions antes de gerar um APK release."
+            exit 1
           fi
 
       - name: Build APK release

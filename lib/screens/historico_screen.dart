@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../database/database_helper.dart';
 import '../models/historico_compra.dart';
-import '../models/produto.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../utils/licenca.dart';
@@ -23,7 +22,7 @@ class _HistoricoScreenState extends State<HistoricoScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 4, vsync: this);
+    _tabs = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -110,7 +109,6 @@ class _HistoricoScreenState extends State<HistoricoScreen>
           tabs: const [
             Tab(icon: Icon(Icons.grid_view_rounded, size: 18), text: 'Visão Geral'),
             Tab(icon: Icon(Icons.bar_chart_rounded, size: 18),  text: 'Gastos'),
-            Tab(icon: Icon(Icons.search_rounded, size: 18),     text: 'Produtos'),
             Tab(icon: Icon(Icons.list_alt_rounded, size: 18),   text: 'Listas'),
           ],
         ),
@@ -120,7 +118,6 @@ class _HistoricoScreenState extends State<HistoricoScreen>
         children: [
           _AbaVisaoGeral(key: ValueKey('visao_$_refreshKey')),
           _AbaGastos(key: ValueKey('gastos_$_refreshKey')),
-          _AbaProdutos(key: ValueKey('produtos_$_refreshKey')),
           _AbaListas(key: ValueKey('listas_$_refreshKey')),
         ],
       ),
@@ -142,12 +139,23 @@ class _AbaVisaoGeralState extends State<_AbaVisaoGeral>
 
   List<Map<String, dynamic>> _ultimosPrecos = [];
   bool _carregando = true;
-  String _filtro = 'todos'; // todos | alertas
+  String _filtro = 'todos'; // todos | alertas | sem_compra
+  final TextEditingController _buscaCtrl = TextEditingController();
+  String _busca = '';
 
   @override
   void initState() {
     super.initState();
     _carregar();
+    _buscaCtrl.addListener(() {
+      setState(() => _busca = _buscaCtrl.text.trim().toLowerCase());
+    });
+  }
+
+  @override
+  void dispose() {
+    _buscaCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _carregar() async {
@@ -157,14 +165,24 @@ class _AbaVisaoGeralState extends State<_AbaVisaoGeral>
   }
 
   List<Map<String, dynamic>> get _filtrados {
+    var lista = _ultimosPrecos;
+    if (_busca.isNotEmpty) {
+      lista = lista
+          .where((p) => (p['produto_nome'] as String)
+              .toLowerCase()
+              .contains(_busca))
+          .toList();
+    }
     if (_filtro == 'alertas') {
-      return _ultimosPrecos.where((p) {
+      lista = lista.where((p) {
         final atual    = (p['preco_unitario'] as num?)?.toDouble();
         final anterior = (p['preco_anterior'] as num?)?.toDouble();
         return atual != null && anterior != null && atual > anterior;
       }).toList();
+    } else if (_filtro == 'sem_compra') {
+      lista = lista.where((p) => p['preco_unitario'] == null).toList();
     }
-    return _ultimosPrecos;
+    return lista;
   }
 
   @override
@@ -178,7 +196,7 @@ class _AbaVisaoGeralState extends State<_AbaVisaoGeral>
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(Icons.receipt_long_outlined, size: 56, color: Colors.grey),
           SizedBox(height: 12),
-          Text('Nenhuma compra registrada ainda',
+          Text('Nenhum produto cadastrado ainda',
               style: TextStyle(color: Colors.grey)),
         ]),
       );
@@ -189,12 +207,37 @@ class _AbaVisaoGeralState extends State<_AbaVisaoGeral>
       final anterior = (p['preco_anterior'] as num?)?.toDouble();
       return atual != null && anterior != null && atual > anterior;
     }).length;
+    final semCompra = _ultimosPrecos.where((p) => p['preco_unitario'] == null).length;
 
     return RefreshIndicator(
       onRefresh: _carregar,
       child: ListView(
         padding: const EdgeInsets.all(12),
         children: [
+          // Busca
+          TextField(
+            controller: _buscaCtrl,
+            decoration: InputDecoration(
+              hintText: 'Buscar produto...',
+              prefixIcon: const Icon(Icons.search, size: 20),
+              suffixIcon: _busca.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () => _buscaCtrl.clear(),
+                    )
+                  : null,
+              isDense: true,
+              filled: true,
+              fillColor: Colors.grey.shade100,
+              contentPadding: const EdgeInsets.symmetric(vertical: 10),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
           // Banner de alertas
           if (alertas > 0) ...[
             Container(
@@ -220,17 +263,27 @@ class _AbaVisaoGeralState extends State<_AbaVisaoGeral>
           ],
 
           // Filtro
-          Row(children: [
+          Wrap(spacing: 8, runSpacing: 6, children: [
             _chipFiltro('todos', 'Todos (${_ultimosPrecos.length})'),
-            const SizedBox(width: 8),
             if (alertas > 0)
               _chipFiltro('alertas', '⚠ Alertas ($alertas)'),
+            if (semCompra > 0)
+              _chipFiltro('sem_compra', 'Sem compra ($semCompra)'),
           ]),
           const SizedBox(height: 10),
 
           // Lista
-          ..._filtrados.map((p) => _CardUltimoPreco(item: p,
-              onTap: () => _abrirDetalhe(p))),
+          if (_filtrados.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 24),
+              child: Center(
+                child: Text('Nenhum produto encontrado',
+                    style: TextStyle(color: Colors.grey)),
+              ),
+            )
+          else
+            ..._filtrados.map((p) => _CardUltimoPreco(item: p,
+                onTap: () => _abrirDetalhe(p))),
         ],
       ),
     );
@@ -302,7 +355,7 @@ class _AbaVisaoGeralState extends State<_AbaVisaoGeral>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text(
-              'Produto cadastrado! Ajuste os detalhes na aba Produtos.')),
+              'Produto cadastrado! Você já pode editá-lo na tela de Produtos.')),
         );
         _carregar();
       }
@@ -321,7 +374,7 @@ class _CardUltimoPreco extends StatelessWidget {
     final unidade    = item['unidade'] as String? ?? 'un';
     final icone      = item['categoria_icone'] as String? ?? '📦';
     final local      = item['local_nome'] as String?;
-    final data       = item['data'] as String;
+    final data       = item['data'] as String?;
     final atual      = (item['preco_unitario'] as num?)?.toDouble();
     final anterior   = (item['preco_anterior'] as num?)?.toDouble();
 
@@ -346,8 +399,15 @@ class _CardUltimoPreco extends StatelessWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(nome, style: const TextStyle(fontWeight: FontWeight.w600)),
                 Text(
-                  '${formatarData(data)}${local != null ? ' · $local' : ''}',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                  data != null
+                      ? '${formatarData(data)}${local != null ? ' · $local' : ''}'
+                      : 'Sem compra registrada ainda',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: data != null
+                          ? Colors.grey.shade500
+                          : Colors.grey.shade400,
+                      fontStyle: data != null ? FontStyle.normal : FontStyle.italic),
                 ),
               ]),
             ),
@@ -661,90 +721,6 @@ class _StatCard extends StatelessWidget {
       ]),
     ),
   );
-}
-
-// ─── ABA 3: Por Produto (busca) ───────────────────────────────────────────────
-class _AbaProdutos extends StatefulWidget {
-  const _AbaProdutos({super.key});
-  @override
-  State<_AbaProdutos> createState() => _AbaProdutosState();
-}
-
-class _AbaProdutosState extends State<_AbaProdutos>
-    with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
-
-  List<Produto> _produtos = [];
-  String _busca = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _carregar();
-  }
-
-  Future<void> _carregar() async {
-    final p = await DatabaseHelper.instance.getProdutos();
-    setState(() => _produtos = p);
-  }
-
-  List<Produto> get _filtrados => _produtos
-      .where((p) => _busca.isEmpty ||
-          p.nome.toLowerCase().contains(_busca.toLowerCase()))
-      .toList();
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-    return Column(children: [
-      Padding(
-        padding: const EdgeInsets.all(12),
-        child: TextField(
-          decoration: const InputDecoration(
-            hintText: 'Buscar produto...',
-            prefixIcon: Icon(Icons.search),
-          ),
-          onChanged: (v) => setState(() => _busca = v),
-        ),
-      ),
-      Expanded(
-        child: _filtrados.isEmpty
-            ? const Center(child: Text('Nenhum produto encontrado',
-                style: TextStyle(color: Colors.grey)))
-            : ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                itemCount: _filtrados.length,
-                itemBuilder: (_, i) {
-                  final p = _filtrados[i];
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 6),
-                    child: ListTile(
-                      leading: FotoOuEmoji(
-                          fotoPath: p.fotoPath,
-                          icone: p.categoriaIcone ?? '📦'),
-                      title: Text(p.nome),
-                      subtitle: Text(p.marca ?? ''),
-                      trailing: const Icon(Icons.chevron_right,
-                          color: Colors.grey),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => _DetalheHistoricoScreen(
-                            produtoId:   p.id!,
-                            produtoNome: p.nome,
-                            unidade:     p.unidade,
-                            icone:       p.categoriaIcone ?? '📦',
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-      ),
-    ]);
-  }
 }
 
 // ─── Tela de Detalhe com Gráfico ──────────────────────────────────────────────

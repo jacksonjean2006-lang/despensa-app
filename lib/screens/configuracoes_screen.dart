@@ -11,6 +11,7 @@ import '../theme.dart';
 import '../utils/atalho_tela_inicial.dart';
 import '../utils/licenca.dart';
 import 'importar_lista_screen.dart';
+import 'mercados_screen.dart';
 
 class ConfiguracoesScreen extends StatefulWidget {
   const ConfiguracoesScreen({super.key});
@@ -369,6 +370,55 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
     }
   }
 
+  /// Mostra o ID deste aparelho (o mesmo que vai no e-mail de solicitação
+  /// de licença), com botão de copiar. Serve pra conferir se o ID mudou
+  /// entre uma solicitação e outra (ex: reinstalou com um APK assinado
+  /// com chave diferente).
+  Future<void> _verIdAparelho() async {
+    final id = await Licenca.idAparelho();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('ID deste aparelho'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+                'É esse ID que vai junto com a solicitação de licença. Se ele '
+                'mudar entre uma solicitação e outra (ex: depois de reinstalar '
+                'o app com uma versão nova), a licença antiga deixa de bater '
+                'com o aparelho.',
+                style: TextStyle(fontSize: 13)),
+            const SizedBox(height: 12),
+            SelectableText(
+              id.isEmpty ? '(não foi possível obter)' : id,
+              style: const TextStyle(
+                  fontFamily: 'monospace', fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        actions: [
+          if (id.isNotEmpty)
+            TextButton.icon(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: id));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('ID copiado')),
+                );
+              },
+              icon: const Icon(Icons.copy, size: 16),
+              label: const Text('Copiar'),
+            ),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Fechar')),
+        ],
+      ),
+    );
+  }
+
   /// Saudação de acordo com o horário atual do aparelho.
   String _saudacaoPorHorario() {
     final hora = DateTime.now().hour;
@@ -406,6 +456,19 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
                   trailing: const Icon(Icons.chevron_right, color: Colors.grey),
                   onTap: () => Navigator.push(context,
                       MaterialPageRoute(builder: (_) => const ImportarListaScreen())),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.storefront_outlined, color: AppTheme.primary),
+                  title: const Text('Mercados'),
+                  subtitle: const Text(
+                      'Editar, excluir ou reativar mercados cadastrados',
+                      style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                  onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const MercadosScreen())),
                 ),
               ),
               const SizedBox(height: 16),
@@ -474,6 +537,18 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
                         )
                       : const Icon(Icons.chevron_right, color: Colors.grey),
                   onTap: Licenca.ativa ? null : _ativarLicenca,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.fingerprint, color: AppTheme.primary),
+                  title: const Text('Ver ID deste aparelho'),
+                  subtitle: const Text(
+                      'Confira o ID usado na licença (útil se a ativação falhar)',
+                      style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                  onTap: _verIdAparelho,
                 ),
               ),
               const SizedBox(height: 16),

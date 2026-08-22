@@ -519,6 +519,51 @@ class DatabaseHelper {
     return rows.map(LocalCompra.fromMap).toList();
   }
 
+  // Todos os mercados, ativos e inativos, pra tela de gerenciamento
+  // (a tela de registrar preço usa getLocais(), que só traz os ativos).
+  Future<List<LocalCompra>> getLocaisTodos() async {
+    final d = await db;
+    final rows = await d.query('locais_compra', orderBy: 'ativo DESC, nome');
+    return rows.map(LocalCompra.fromMap).toList();
+  }
+
+  Future<bool> localEstaEmUso(int id) async {
+    final d = await db;
+    final h = await d.rawQuery(
+        'SELECT COUNT(*) AS c FROM historico_compras WHERE local_id = ?', [id]);
+    final li = await d.rawQuery(
+        'SELECT COUNT(*) AS c FROM lista_itens WHERE local_id = ?', [id]);
+    final ch  = (h.first['c'] as int?) ?? 0;
+    final cli = (li.first['c'] as int?) ?? 0;
+    return (ch + cli) > 0;
+  }
+
+  // Exclui um mercado. Se ele já tem histórico de compra ligado (preço
+  // registrado alguma vez) ou está em uso em algum item de lista atual,
+  // apagar de verdade deixaria esse histórico "órfão" (sem nome de
+  // mercado) - nesse caso só desativa (ativo = 0): ele some da lista de
+  // seleção, mas o histórico continua mostrando o nome normalmente. Se
+  // nunca foi usado em nada, apaga de fato.
+  // Retorna true se apagou de verdade, false se só desativou.
+  Future<bool> excluirLocal(int id) async {
+    final d = await db;
+    final emUso = await localEstaEmUso(id);
+    if (emUso) {
+      await d.update('locais_compra', {'ativo': 0},
+          where: 'id = ?', whereArgs: [id]);
+      return false;
+    } else {
+      await d.delete('locais_compra', where: 'id = ?', whereArgs: [id]);
+      return true;
+    }
+  }
+
+  Future<void> reativarLocal(int id) async {
+    final d = await db;
+    await d.update('locais_compra', {'ativo': 1},
+        where: 'id = ?', whereArgs: [id]);
+  }
+
   Future<int> salvarLocal(LocalCompra local) async {
     final d = await db;
     if (local.id == null) {
@@ -665,10 +710,15 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> getUltimosPrecos() async {
     final d = await db;
-    // Itens cadastrados — última compra de cada produto
+    // Itens cadastrados — TODO o cadastro ativo, com a última compra de
+    // cada um quando existir (LEFT JOIN). Produtos sem nenhuma compra
+    // registrada ainda aparecem também, só com os campos de preço nulos -
+    // isso permite usar essa mesma lista tanto pra ver preços quanto pra
+    // buscar/abrir qualquer produto do cadastro (fundindo o que antes
+    // eram duas abas separadas: "Visão Geral" e "Produtos").
     final cadastrados = await d.rawQuery('''
       SELECT
-        h.produto_id,
+        p.id AS produto_id,
         p.nome AS produto_nome,
         p.unidade,
         c.icone AS categoria_icone,
@@ -677,17 +727,18 @@ class DatabaseHelper {
         h.quantidade_comprada,
         h.data,
         l.nome AS local_nome
-      FROM historico_compras h
-      JOIN produtos p ON p.id = h.produto_id
+      FROM produtos p
       LEFT JOIN categorias c ON c.id = p.categoria_id
-      LEFT JOIN locais_compra l ON l.id = h.local_id
-      WHERE h.preco_unitario IS NOT NULL
+      LEFT JOIN historico_compras h ON h.produto_id = p.id
+        AND h.preco_unitario IS NOT NULL
         AND h.data = (
           SELECT MAX(h2.data) FROM historico_compras h2
-          WHERE h2.produto_id = h.produto_id
+          WHERE h2.produto_id = p.id
             AND h2.preco_unitario IS NOT NULL
         )
-      GROUP BY h.produto_id
+      LEFT JOIN locais_compra l ON l.id = h.local_id
+      WHERE p.ativo = 1
+      GROUP BY p.id
       ORDER BY p.nome
     ''');
 
@@ -721,38 +772,44 @@ class DatabaseHelper {
     final todos = [...cadastrados, ...avulsos];
 
     // Para cada produto/avulso, busca o preço anterior separadamente
+    // (só quando já existe pelo menos uma compra registrada - produtos
+    // sem nenhuma compra não têm "anterior" pra comparar)
     final result = <Map<String, dynamic>>[];
     for (final row in todos) {
       final produtoId  = row['produto_id'] as int?;
       final nomeAvulso = row['produto_nome'] as String?;
-      final dataAtual  = row['data'] as String;
+      final dataAtual  = row['data'] as String?;
 
-      List<Map<String, Object?>> anterior;
-      if (produtoId != null) {
-        anterior = await d.rawQuery('''
-          SELECT preco_unitario FROM historico_compras
-          WHERE produto_id = ?
-            AND preco_unitario IS NOT NULL
-            AND data < ?
-          ORDER BY data DESC
-          LIMIT 1
-        ''', [produtoId, dataAtual]);
-      } else {
-        anterior = await d.rawQuery('''
-          SELECT preco_unitario FROM historico_compras
-          WHERE nome_avulso = ?
-            AND produto_id IS NULL
-            AND preco_unitario IS NOT NULL
-            AND data < ?
-          ORDER BY data DESC
-          LIMIT 1
-        ''', [nomeAvulso, dataAtual]);
+      double? precoAnterior;
+      if (dataAtual != null) {
+        List<Map<String, Object?>> anterior;
+        if (produtoId != null) {
+          anterior = await d.rawQuery('''
+            SELECT preco_unitario FROM historico_compras
+            WHERE produto_id = ?
+              AND preco_unitario IS NOT NULL
+              AND data < ?
+            ORDER BY data DESC
+            LIMIT 1
+          ''', [produtoId, dataAtual]);
+        } else {
+          anterior = await d.rawQuery('''
+            SELECT preco_unitario FROM historico_compras
+            WHERE nome_avulso = ?
+              AND produto_id IS NULL
+              AND preco_unitario IS NOT NULL
+              AND data < ?
+            ORDER BY data DESC
+            LIMIT 1
+          ''', [nomeAvulso, dataAtual]);
+        }
+        precoAnterior = anterior.isEmpty
+            ? null
+            : (anterior.first['preco_unitario'] as num?)?.toDouble();
       }
 
       final mapa = Map<String, dynamic>.from(row);
-      mapa['preco_anterior'] = anterior.isEmpty
-          ? null
-          : (anterior.first['preco_unitario'] as num?)?.toDouble();
+      mapa['preco_anterior'] = precoAnterior;
       result.add(mapa);
     }
 
