@@ -373,6 +373,107 @@ class DatabaseHelper {
     );
   }
 
+  // Soma (ou subtrai, se negativo) uma quantidade no estoque de um produto,
+  // usando a transação em andamento. Nunca deixa o estoque ficar negativo.
+  Future<void> _somarEstoqueTxn(
+      DatabaseExecutor txn, int produtoId, double delta) async {
+    final rows = await txn.query('estoque',
+        where: 'produto_id = ?', whereArgs: [produtoId]);
+    final agora = DateTime.now().toIso8601String();
+    if (rows.isEmpty) {
+      await txn.insert('estoque', {
+        'produto_id': produtoId,
+        'quantidade': delta < 0 ? 0.0 : delta,
+        'atualizado_em': agora,
+      });
+    } else {
+      final atual = (rows.first['quantidade'] as num).toDouble();
+      final novo = atual + delta;
+      await txn.update(
+        'estoque',
+        {'quantidade': novo < 0 ? 0.0 : novo, 'atualizado_em': agora},
+        where: 'produto_id = ?',
+        whereArgs: [produtoId],
+      );
+    }
+  }
+
+  // Finaliza a compra inteira numa única transação: grava o histórico,
+  // soma o estoque e marca a lista como finalizada. Se qualquer passo
+  // falhar, nada fica gravado pela metade.
+  Future<void> finalizarListaComCompras(
+    int listaId,
+    List<HistoricoCompra> compras, {
+    double? desconto,
+  }) async {
+    final d = await db;
+    await d.transaction((txn) async {
+      for (final h in compras) {
+        await txn.insert('historico_compras', h.toMap());
+        if (h.produtoId != null) {
+          await _somarEstoqueTxn(txn, h.produtoId!, h.quantidadeComprada);
+        }
+      }
+      await txn.update(
+        'listas',
+        {
+          'finalizado_em': DateTime.now().toIso8601String(),
+          if (desconto != null && desconto > 0) 'desconto': desconto,
+        },
+        where: 'id = ?',
+        whereArgs: [listaId],
+      );
+    });
+  }
+
+  // A última lista finalizada (a única que pode ter a finalização desfeita)
+  Future<Map<String, dynamic>?> getUltimaListaFinalizada() async {
+    final d = await db;
+    final rows = await d.query('listas',
+        where: 'finalizado_em IS NOT NULL',
+        orderBy: 'finalizado_em DESC',
+        limit: 1);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  // Desfaz a finalização da ÚLTIMA lista finalizada: apaga o histórico de
+  // compras dela, tira do estoque o que foi somado na finalização e reabre
+  // a lista (os itens, marcações e preços continuam como estavam).
+  // Retorna null se deu certo, ou o motivo (texto pro usuário) se não foi
+  // possível.
+  Future<String?> desfazerFinalizacao(int listaId) async {
+    final d = await db;
+    final ultima = await getUltimaListaFinalizada();
+    if (ultima == null || ultima['id'] != listaId) {
+      return 'Só é possível desfazer a última compra finalizada.';
+    }
+    final aberta = await getListaAberta();
+    if (aberta != null) {
+      return 'Já existe uma lista aberta ("${aberta['descricao']}"). '
+          'Finalize ou exclua ela antes de desfazer esta.';
+    }
+    await d.transaction((txn) async {
+      final compras = await txn.query('historico_compras',
+          where: 'lista_id = ?', whereArgs: [listaId]);
+      for (final c in compras) {
+        final produtoId = c['produto_id'] as int?;
+        if (produtoId != null) {
+          final qtd = (c['quantidade_comprada'] as num).toDouble();
+          await _somarEstoqueTxn(txn, produtoId, -qtd);
+        }
+      }
+      await txn.delete('historico_compras',
+          where: 'lista_id = ?', whereArgs: [listaId]);
+      await txn.update(
+        'listas',
+        {'finalizado_em': null, 'desconto': null},
+        where: 'id = ?',
+        whereArgs: [listaId],
+      );
+    });
+    return null;
+  }
+
   Future<Map<String, dynamic>?> getListaAberta() async {
     final d = await db;
     final rows = await d.query('listas',
@@ -509,6 +610,53 @@ class DatabaseHelper {
         'substituto': 0,
       });
     }
+  }
+
+  // Gera os itens da lista SÓ para os produtos escolhidos (marcados) no
+  // levantamento de estoque. Quem já está na lista não é duplicado. A
+  // quantidade é a informada pelo usuário em [quantidades] (id do produto ->
+  // quantidade); sem ela, é consumo mensal - estoque atual e, se der zero ou
+  // menos, a quantidade mensal do produto (ou 1, se o consumo dele for 0).
+  Future<void> gerarListaDeProdutos(int listaId, List<int> produtoIds,
+      {Map<int, double>? quantidades}) async {
+    if (produtoIds.isEmpty) return;
+    final d = await db;
+    final marcas = List.filled(produtoIds.length, '?').join(',');
+    final rows = await d.rawQuery('''
+      SELECT p.id, p.unidade, p.consumo_mensal,
+             COALESCE((
+               SELECT quantidade FROM estoque
+               WHERE produto_id = p.id
+               ORDER BY atualizado_em DESC
+               LIMIT 1
+             ), 0) AS estoque_atual
+      FROM produtos p
+      WHERE p.id IN ($marcas)
+        AND p.id NOT IN (
+          SELECT produto_id FROM lista_itens
+          WHERE lista_id = ? AND produto_id IS NOT NULL
+        )
+    ''', [...produtoIds, listaId]);
+    await d.transaction((txn) async {
+      for (final row in rows) {
+        final consumo = (row['consumo_mensal'] as num).toDouble();
+        final informada = quantidades?[row['id'] as int];
+        var qtd = consumo - (row['estoque_atual'] as num).toDouble();
+        if (informada != null && informada > 0) {
+          qtd = informada;
+        } else if (qtd <= 0) {
+          qtd = consumo > 0 ? consumo : 1;
+        }
+        await txn.insert('lista_itens', {
+          'lista_id': listaId,
+          'produto_id': row['id'],
+          'quantidade': qtd,
+          'unidade': row['unidade'],
+          'marcado': 0,
+          'substituto': 0,
+        });
+      }
+    });
   }
 
   // ─── LOCAIS ────────────────────────────────────────────────

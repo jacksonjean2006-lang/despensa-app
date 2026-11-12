@@ -14,8 +14,13 @@ class LevantamentoScreen extends StatefulWidget {
 class _LevantamentoScreenState extends State<LevantamentoScreen> {
   List<Produto> _produtos = [];
   final Map<int, TextEditingController> _ctrls = {};
+  // Quantidade a comprar de cada produto (campo "Comprar", editável)
+  final Map<int, TextEditingController> _ctrlsComprar = {};
   bool _salvando = false;
   Map<String, dynamic>? _listaAberta;
+  // Produtos que o usuário marcou pra comprar. Só esses têm o estoque
+  // salvo e entram na lista gerada.
+  final Set<int> _selecionados = {};
 
   @override
   void initState() {
@@ -34,6 +39,7 @@ class _LevantamentoScreenState extends State<LevantamentoScreen> {
     setState(() {
       _produtos = lista;
       for (final p in lista) {
+        _ctrlsComprar[p.id!] = TextEditingController();
         _ctrls[p.id!] = TextEditingController(
           text: (p.estoqueAtual ?? 0) > 0
               ? (p.estoqueAtual!).toStringAsFixed(
@@ -47,14 +53,26 @@ class _LevantamentoScreenState extends State<LevantamentoScreen> {
   @override
   void dispose() {
     for (final c in _ctrls.values) c.dispose();
+    for (final c in _ctrlsComprar.values) c.dispose();
     super.dispose();
   }
 
   Future<void> _gerarLista() async {
     setState(() => _salvando = true);
-    // Salva todos os estoques informados
-    for (final p in _produtos) {
-      final v = double.tryParse(_ctrls[p.id!]?.text ?? '') ?? 0;
+    // Salva o estoque só dos produtos marcados (os não marcados ficam como
+    // estão e não entram na lista)
+    final ids = _selecionados.toList();
+    // Quantidade a comprar informada (ou sugerida e mantida) de cada marcado
+    final quantidades = <int, double>{};
+    for (final id in ids) {
+      final q = double.tryParse(
+          (_ctrlsComprar[id]?.text ?? '').replaceAll(',', '.'));
+      if (q != null && q > 0) quantidades[id] = q;
+    }
+    for (final p in _produtos.where((p) => _selecionados.contains(p.id))) {
+      final v = double.tryParse(
+              (_ctrls[p.id!]?.text ?? '').replaceAll(',', '.')) ??
+          0;
       await DatabaseHelper.instance.atualizarEstoque(p.id!, v);
     }
     // Verifica se já existe lista aberta
@@ -65,9 +83,10 @@ class _LevantamentoScreenState extends State<LevantamentoScreen> {
     } else {
       listaId = lista['id'] as int;
     }
-    // Roda sempre, tanto pra lista nova quanto pra existente - só adiciona os
-    // produtos que ainda não estão nela (evita duplicar os já presentes).
-    await DatabaseHelper.instance.gerarListaAutomatica(listaId);
+    // Adiciona só os produtos marcados que ainda não estão na lista (evita
+    // duplicar os já presentes).
+    await DatabaseHelper.instance
+        .gerarListaDeProdutos(listaId, ids, quantidades: quantidades);
     setState(() => _salvando = false);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -119,7 +138,8 @@ class _LevantamentoScreenState extends State<LevantamentoScreen> {
             SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Percorra a despensa e informe quanto tem de cada produto agora.',
+                'Marque os produtos que pretende comprar e informe quanto tem de cada um agora. '
+                'Os não marcados ficam fora da lista.',
                 style: TextStyle(color: Color(0xFF0C447C), fontSize: 13),
               ),
             ),
@@ -163,7 +183,18 @@ class _LevantamentoScreenState extends State<LevantamentoScreen> {
                                 letterSpacing: 0.5)),
                       ),
                       ...entry.value.map((p) => _ItemLevantamento(
-                          produto: p, ctrl: _ctrls[p.id!]!)),
+                            produto: p,
+                            ctrl: _ctrls[p.id!]!,
+                            comprarCtrl: _ctrlsComprar[p.id!]!,
+                            selecionado: _selecionados.contains(p.id),
+                            onSelecionar: (v) => setState(() {
+                              if (v) {
+                                _selecionados.add(p.id!);
+                              } else {
+                                _selecionados.remove(p.id!);
+                              }
+                            }),
+                          )),
                     ],
                     const SizedBox(height: 80),
                   ],
@@ -172,13 +203,17 @@ class _LevantamentoScreenState extends State<LevantamentoScreen> {
         Padding(
           padding: const EdgeInsets.all(12),
           child: ElevatedButton.icon(
-            onPressed: (_salvando || _listaAberta != null) ? null : _gerarLista,
+            onPressed: (_salvando || _listaAberta != null || _selecionados.isEmpty)
+                ? null
+                : _gerarLista,
             icon: const Icon(Icons.shopping_cart_outlined),
             label: Text(_salvando
                 ? 'Gerando...'
                 : _listaAberta != null
                     ? 'Lista em andamento'
-                    : 'Gerar Lista de Compras'),
+                    : _selecionados.isEmpty
+                        ? 'Marque os itens que vai comprar'
+                        : 'Gerar Lista de Compras (${_selecionados.length})'),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primary,
               foregroundColor: Colors.white,
@@ -196,32 +231,78 @@ class _LevantamentoScreenState extends State<LevantamentoScreen> {
 class _ItemLevantamento extends StatefulWidget {
   final Produto produto;
   final TextEditingController ctrl;
-  const _ItemLevantamento({required this.produto, required this.ctrl});
+  final TextEditingController comprarCtrl;
+  final bool selecionado;
+  final ValueChanged<bool> onSelecionar;
+  const _ItemLevantamento({
+    required this.produto,
+    required this.ctrl,
+    required this.comprarCtrl,
+    required this.selecionado,
+    required this.onSelecionar,
+  });
   @override
   State<_ItemLevantamento> createState() => _ItemLevantamentoState();
 }
 
 class _ItemLevantamentoState extends State<_ItemLevantamento> {
-  double get _atual => double.tryParse(widget.ctrl.text) ?? 0;
-  double get _comprar {
-    final d = widget.produto.consumoMensal - _atual;
-    return d > 0 ? d : 0;
+  // true quando o usuário digitou a quantidade a comprar na mão: a partir
+  // daí o app para de recalcular a sugestão desse item.
+  bool _editouComprar = false;
+
+  double get _atual =>
+      double.tryParse(widget.ctrl.text.replaceAll(',', '.')) ?? 0;
+
+  // Sugestão: consumo mensal - estoque. Se o estoque já cobre o consumo,
+  // a quantidade mensal inteira (ou 1, se o consumo mensal for 0).
+  double get _sugerido {
+    final consumo = widget.produto.consumoMensal;
+    final d = consumo - _atual;
+    if (d > 0) return d;
+    return consumo > 0 ? consumo : 1;
+  }
+
+  String _fmt(double v) {
+    var s = v.toStringAsFixed(2);
+    if (s.contains('.')) {
+      s = s.replaceFirst(RegExp(r'0+$'), '');
+      s = s.replaceFirst(RegExp(r'\.$'), '');
+    }
+    return s;
+  }
+
+  void _sincronizarComprar() {
+    if (!_editouComprar) widget.comprarCtrl.text = _fmt(_sugerido);
   }
 
   @override
   void initState() {
     super.initState();
-    widget.ctrl.addListener(() => setState(() {}));
+    _sincronizarComprar();
+    widget.ctrl.addListener(() {
+      if (!mounted) return;
+      _sincronizarComprar();
+      setState(() {});
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
+      color: widget.selecionado ? AppTheme.primary.withOpacity(0.05) : null,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
+          InkWell(
+            onTap: () => widget.onSelecionar(!widget.selecionado),
+            child: Row(children: [
+            Checkbox(
+              value: widget.selecionado,
+              onChanged: (v) => widget.onSelecionar(v ?? false),
+              activeColor: AppTheme.primary,
+              visualDensity: VisualDensity.compact,
+            ),
             FotoOuEmoji(
                 fotoPath: widget.produto.fotoPath,
                 icone: widget.produto.categoriaIcone,
@@ -238,6 +319,7 @@ class _ItemLevantamentoState extends State<_ItemLevantamento> {
               ]),
             ),
           ]),
+          ),
           const SizedBox(height: 10),
           Row(children: [
             SizedBox(
@@ -255,6 +337,7 @@ class _ItemLevantamentoState extends State<_ItemLevantamento> {
                   ),
                   TextField(
                     controller: widget.ctrl,
+                    enabled: widget.selecionado,
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
                     textAlign: TextAlign.center,
@@ -270,22 +353,44 @@ class _ItemLevantamentoState extends State<_ItemLevantamento> {
               ),
             ),
             const SizedBox(width: 12),
-            Expanded(
-              child: _comprar > 0
-                  ? Text(
-                      'comprar: ${formatarQtd(_comprar, widget.produto.unidade)}',
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: _comprar >= widget.produto.consumoMensal * 0.6
-                              ? AppTheme.danger
-                              : AppTheme.warning),
-                      textAlign: TextAlign.right,
-                    )
-                  : const Text('estoque ok ✓',
-                      style: TextStyle(
-                          fontSize: 13, color: AppTheme.success),
-                      textAlign: TextAlign.right),
-            ),
+            if (!widget.selecionado)
+              Expanded(
+                child: Text('marque pra incluir na lista',
+                    style:
+                        TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                    textAlign: TextAlign.right),
+              )
+            else
+              SizedBox(
+                width: 108,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(left: 2, bottom: 3),
+                      child: Text('Comprar',
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey.shade600)),
+                    ),
+                    TextField(
+                      controller: widget.comprarCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      textAlign: TextAlign.center,
+                      onChanged: (_) => _editouComprar = true,
+                      decoration: InputDecoration(
+                        hintText: '0',
+                        suffixText: widget.produto.unidade,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                            vertical: 10, horizontal: 6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ]),
         ]),
       ),

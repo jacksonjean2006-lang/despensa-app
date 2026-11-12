@@ -4,6 +4,7 @@ import '../database/database_helper.dart';
 import '../models/lista_item.dart';
 import '../models/local_compra.dart';
 import '../models/historico_compra.dart';
+import '../models/produto.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../utils/lista_compartilhar.dart';
@@ -126,7 +127,7 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
       if (itemNaLista != null) {
         // Já está nessa lista - abre direto o preço, sem precisar buscar
         // pela descrição
-        _registrarPreco(itemNaLista);
+        _registrarPreco(itemNaLista, marcar: true);
         return;
       }
 
@@ -146,15 +147,9 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
           ],
         ),
       );
-      if (add == true && _listaId != null) {
-        await DatabaseHelper.instance.adicionarItem(ListaItem(
-          listaId:    _listaId!,
-          produtoId:  produto.id,
-          quantidade: 1,
-          unidade:    produto.unidade,
-        ));
-        _carregar();
-      }
+      // Adiciona, já marca como "no carrinho" e abre o preço direto,
+      // sem precisar procurar o item na lista.
+      if (add == true) await _adicionarProdutoEPreco(produto);
       return;
     }
 
@@ -192,8 +187,59 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
       await Navigator.push(context, MaterialPageRoute(
           builder: (_) => CadastroProdutoScreen(
               cats: cats, codigoBarrasInicial: codigo, nomeInicial: nomeSugerido)));
-      _carregar();
+      if (!mounted) return;
+
+      // O cadastro não devolve nada ao fechar, então confere pelo código de
+      // barras se o produto foi mesmo salvo (se cancelou, não pergunta nada).
+      final novo =
+          await DatabaseHelper.instance.buscarProdutoPorCodigoBarras(codigo);
+      if (novo == null || !mounted) {
+        _carregar();
+        return;
+      }
+      final adicionar = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Adicionar na lista?'),
+          content: Text(
+              '"${novo.nome}" foi cadastrado. Adicionar nessa lista e registrar o preço agora?'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Agora não')),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white),
+              child: const Text('Adicionar'),
+            ),
+          ],
+        ),
+      );
+      if (adicionar == true) {
+        await _adicionarProdutoEPreco(novo);
+      } else {
+        _carregar();
+      }
     }
+  }
+
+  // Adiciona um produto cadastrado na lista, já marcado como "no carrinho",
+  // e abre o diálogo de preço (fluxo do scanner: só falta digitar o preço).
+  Future<void> _adicionarProdutoEPreco(Produto produto) async {
+    if (_listaId == null) return;
+    final id = await DatabaseHelper.instance.adicionarItem(ListaItem(
+      listaId:    _listaId!,
+      produtoId:  produto.id,
+      quantidade: 1,
+      unidade:    produto.unidade,
+    ));
+    await DatabaseHelper.instance.toggleMarcado(id, true);
+    await _carregar();
+    if (!mounted) return;
+    final item = _itens.where((i) => i.id == id).firstOrNull;
+    if (item != null) await _registrarPreco(item, marcar: true);
   }
 
   Future<void> _renomear() async {
@@ -240,7 +286,9 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
     }
   }
 
-  Future<void> _registrarPreco(ListaItem item) async {
+  // [marcar]: ao salvar o preço, marca o item como "no carrinho" (usado pelo
+  // scanner, já que o Finalizar compra só grava os itens marcados).
+  Future<void> _registrarPreco(ListaItem item, {bool marcar = false}) async {
     final locais = await DatabaseHelper.instance.getLocais();
     final comparativo = await DatabaseHelper.instance.getComparativoPrecos(
       produtoId: item.produtoId,
@@ -284,19 +332,65 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
         item.localId        = resultado.localId;
         item.localNome      = resultado.localNome;
       });
+      if (marcar && !item.marcado && !_readOnly) {
+        await DatabaseHelper.instance.toggleMarcado(item.id!, true);
+        if (mounted) setState(() => item.marcado = true);
+      }
     }
   }
 
   Future<void> _finalizarCompra() async {
     if (_listaId == null) return;
 
-    // Se há itens marcados sem local, pede o local geral
+    // Confirmação antes de qualquer coisa: evita finalizar sem querer por
+    // um toque acidental no botão (principalmente com o celular na mão).
+    final marcadosAtuais = _itens.where((i) => i.marcado).toList();
+    final nMarc = marcadosAtuais.length;
+    final naoMarcados = _itens.length - nMarc;
+    final totalConfirma = marcadosAtuais
+        .where((i) => i.precoTotal != null)
+        .fold<double>(0, (s, i) => s + i.precoTotal!);
+    final txtMarcados =
+        '$nMarc ${nMarc == 1 ? 'item marcado' : 'itens marcados'}';
+    final txtTotal =
+        totalConfirma > 0 ? ' · ${formatarMoeda(totalConfirma)}' : '';
+    final txtFora = naoMarcados > 0
+        ? '\n\n$naoMarcados ${naoMarcados == 1 ? 'item não marcado fica' : 'itens não marcados ficam'} de fora da compra.'
+        : '';
+    final confirmou = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Finalizar compra?'),
+        content: Text(
+          '$txtMarcados$txtTotal.$txtFora\n\n'
+          'O estoque será atualizado. Se finalizar sem querer, dá pra '
+          'desfazer abrindo a lista finalizada.',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.success, foregroundColor: Colors.white),
+            child: const Text('Finalizar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmou != true || !mounted) return;
+
+    // Local (mercado) geral da compra. Voltar/Cancelar cancela a finalização
+    // inteira; "Pular" devolve -1 (segue sem local geral).
     final locais = await DatabaseHelper.instance.getLocais();
     if (!mounted) return;
-    final localIdGeral = await showDialog<int>(
+    final escolhaLocal = await showDialog<int>(
       context: context,
       builder: (_) => _DialogSelecionarLocal(locais: locais),
     );
+    if (escolhaLocal == null) return;
+    final int? localIdGeral = escolhaLocal == -1 ? null : escolhaLocal;
 
     // Desconto geral ao finalizar (ex: cupom, promoção do caixa) - reduz
     // proporcionalmente o valor gasto de cada item, sem mexer no preço
@@ -307,11 +401,13 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
         .fold<double>(0, (s, i) => s + i.precoTotal!);
     double descontoFinal = 0;
     if (totalMarcados > 0) {
-      descontoFinal = await showDialog<double>(
-            context: context,
-            builder: (_) => _DialogDescontoFinal(totalAtual: totalMarcados),
-          ) ??
-          0;
+      final desc = await showDialog<double>(
+        context: context,
+        builder: (_) => _DialogDescontoFinal(totalAtual: totalMarcados),
+      );
+      // Voltar/Cancelar no diálogo de desconto cancela a finalização
+      if (desc == null) return;
+      descontoFinal = desc;
     }
     final fator = (descontoFinal > 0 && totalMarcados > 0)
         ? (((totalMarcados - descontoFinal) / totalMarcados)
@@ -320,6 +416,7 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
         : 1.0;
 
     final agora = DateTime.now().toIso8601String();
+    final compras = <HistoricoCompra>[];
     for (final item in _itens.where((i) => i.marcado)) {
       // Lê o preço direto do item (já persistido no banco desde que foi
       // registrado no dialog) - não depende de nenhum estado em memória.
@@ -327,7 +424,7 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
       // (nomeAvulso) - antes só os cadastrados entravam no histórico, o
       // que fazia o total de "Gastos" ficar menor que o real.
       if (item.produtoId != null || item.nomeAvulso != null) {
-        await DatabaseHelper.instance.registrarCompra(HistoricoCompra(
+        compras.add(HistoricoCompra(
           listaId:            _listaId,
           produtoId:          item.produtoId,
           nomeAvulso:         item.produtoId == null ? item.nomeAvulso : null,
@@ -341,7 +438,23 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
       }
     }
 
-    await DatabaseHelper.instance.finalizarLista(_listaId!, desconto: descontoFinal);
+    // Tudo (histórico + estoque + finalização) é gravado numa transação só:
+    // se algo falhar, nada fica pela metade.
+    try {
+      await DatabaseHelper.instance
+          .finalizarListaComCompras(_listaId!, compras, desconto: descontoFinal);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Não foi possível finalizar a compra. Nada foi gravado, tente de novo.'),
+            backgroundColor: AppTheme.danger,
+          ),
+        );
+      }
+      return;
+    }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -580,8 +693,68 @@ class _ListaComprasScreenState extends State<ListaComprasScreen> {
           ]),
           ),
         ),
+
+        // Lista já finalizada: permite desfazer (só vale pra última finalizada)
+        if (_readOnly)
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+              child: OutlinedButton.icon(
+                onPressed: _desfazerFinalizacao,
+                icon:  const Icon(Icons.undo),
+                label: const Text('Desfazer finalização'),
+                style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48)),
+              ),
+            ),
+          ),
       ]),
     );
+  }
+
+  Future<void> _desfazerFinalizacao() async {
+    if (_listaId == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Desfazer finalização?'),
+        content: const Text(
+            'A lista volta a ficar aberta, o histórico dessa compra é apagado '
+            'e as quantidades compradas saem do estoque.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
+            child: const Text('Desfazer'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    String? motivo;
+    try {
+      motivo = await DatabaseHelper.instance.desfazerFinalizacao(_listaId!);
+    } catch (e) {
+      motivo = 'Não foi possível desfazer. Nada foi alterado.';
+    }
+    if (!mounted) return;
+    if (motivo != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(motivo)));
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Finalização desfeita. A lista está aberta de novo.'),
+        backgroundColor: AppTheme.success,
+      ),
+    );
+    _carregar();
   }
 
   void _compartilhar() async {
@@ -1288,6 +1461,9 @@ class _DialogDescontoFinalState extends State<_DialogDescontoFinal> {
       ]),
       actions: [
         TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar')),
+        TextButton(
             onPressed: () => Navigator.pop(context, 0.0),
             child: const Text('Sem desconto')),
         ElevatedButton(
@@ -1391,9 +1567,12 @@ class _DialogSelecionarLocalState extends State<_DialogSelecionarLocal> {
       actions: [
         TextButton(
             onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar')),
+        TextButton(
+            onPressed: () => Navigator.pop(context, -1),
             child: const Text('Pular')),
         ElevatedButton(
-          onPressed: () => Navigator.pop(context, _selecionado),
+          onPressed: () => Navigator.pop(context, _selecionado ?? -1),
           style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primary,
               foregroundColor: Colors.white),
