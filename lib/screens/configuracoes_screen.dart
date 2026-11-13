@@ -12,6 +12,7 @@ import '../utils/atalho_tela_inicial.dart';
 import '../utils/licenca.dart';
 import 'importar_lista_screen.dart';
 import 'mercados_screen.dart';
+import 'produtos_csv_screen.dart';
 
 class ConfiguracoesScreen extends StatefulWidget {
   const ConfiguracoesScreen({super.key});
@@ -469,6 +470,20 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
                   trailing: const Icon(Icons.chevron_right, color: Colors.grey),
                   onTap: () => Navigator.push(context,
                       MaterialPageRoute(builder: (_) => const MercadosScreen())),
+                ),
+              ),
+              const SizedBox(height: 16),
+              _secao('PRODUTOS'),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.table_chart_outlined, color: AppTheme.primary),
+                  title: const Text('Importar / exportar produtos'),
+                  subtitle: const Text(
+                      'Cadastre vários produtos de uma vez por planilha (CSV)',
+                      style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                  onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const ProdutosCsvScreen())),
                 ),
               ),
               const SizedBox(height: 16),
